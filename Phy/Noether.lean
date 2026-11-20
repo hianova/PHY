@@ -1586,4 +1586,685 @@ theorem coupled3_of_witnesses (T : BitVec 6 → BitVec 6)
     Is3ChannelCoupled4 T :=
   ⟨⟨a0, a1, b0, c0, hL⟩, ⟨a2, b1, c1, c2, hR⟩⟩
 
+/-! ## Section 14: Universal AME(4,4) Affine Rigidity No-Go Theorem (`BitVec 4`) -/
+
+def getNib4 (lut : BitVec 64) (i : Nat) : BitVec 4 :=
+  BitVec.extractLsb' (i * 4) 4 lut
+
+def allDistinct4BV2 (x0 x1 x2 x3 : BitVec 2) : Bool :=
+  (x0 != x1) && (x0 != x2) && (x0 != x3) && (x1 != x2) && (x1 != x3) && (x2 != x3)
+
+def allDistinct16Lut (lut : BitVec 64) : Bool :=
+  (List.range 16).all fun i =>
+    (List.range 16).all fun j =>
+      (i == j) || (getNib4 lut i != getNib4 lut j)
+
+def isLatinC4 (lut : BitVec 64) : Bool :=
+  (List.range 4).all (fun a =>
+    allDistinct4BV2 (hi2 (getNib4 lut (4 * a))) (hi2 (getNib4 lut (4 * a + 1)))
+                    (hi2 (getNib4 lut (4 * a + 2))) (hi2 (getNib4 lut (4 * a + 3)))) &&
+  (List.range 4).all (fun b =>
+    allDistinct4BV2 (hi2 (getNib4 lut b)) (hi2 (getNib4 lut (4 + b)))
+                    (hi2 (getNib4 lut (8 + b))) (hi2 (getNib4 lut (12 + b))))
+
+def isLatinD4 (lut : BitVec 64) : Bool :=
+  (List.range 4).all (fun a =>
+    allDistinct4BV2 (lo2 (getNib4 lut (4 * a))) (lo2 (getNib4 lut (4 * a + 1)))
+                    (lo2 (getNib4 lut (4 * a + 2))) (lo2 (getNib4 lut (4 * a + 3)))) &&
+  (List.range 4).all (fun b =>
+    allDistinct4BV2 (lo2 (getNib4 lut b)) (lo2 (getNib4 lut (4 + b)))
+                    (lo2 (getNib4 lut (8 + b))) (lo2 (getNib4 lut (12 + b))))
+
+def is2Unitary4Lut (lut : BitVec 64) : Bool :=
+  allDistinct16Lut lut && isLatinC4 lut && isLatinD4 lut
+
+def isAffine4Lut (lut : BitVec 64) : Bool :=
+  let v0 := getNib4 lut 0
+  (List.range 16).all fun x =>
+    let exp :=
+      v0 ^^^
+      (if (x &&& 1) != 0 then getNib4 lut 1 ^^^ v0 else 0#4) ^^^
+      (if (x &&& 2) != 0 then getNib4 lut 2 ^^^ v0 else 0#4) ^^^
+      (if (x &&& 4) != 0 then getNib4 lut 4 ^^^ v0 else 0#4) ^^^
+      (if (x &&& 8) != 0 then getNib4 lut 8 ^^^ v0 else 0#4)
+    getNib4 lut x == exp
+
+def packLut4 (P : BitVec 4 → BitVec 4) : BitVec 64 :=
+  ((BitVec.zeroExtend 64 (P 0#4)) <<< 0) |||
+  ((BitVec.zeroExtend 64 (P 1#4)) <<< 4) |||
+  ((BitVec.zeroExtend 64 (P 2#4)) <<< 8) |||
+  ((BitVec.zeroExtend 64 (P 3#4)) <<< 12) |||
+  ((BitVec.zeroExtend 64 (P 4#4)) <<< 16) |||
+  ((BitVec.zeroExtend 64 (P 5#4)) <<< 20) |||
+  ((BitVec.zeroExtend 64 (P 6#4)) <<< 24) |||
+  ((BitVec.zeroExtend 64 (P 7#4)) <<< 28) |||
+  ((BitVec.zeroExtend 64 (P 8#4)) <<< 32) |||
+  ((BitVec.zeroExtend 64 (P 9#4)) <<< 36) |||
+  ((BitVec.zeroExtend 64 (P 10#4)) <<< 40) |||
+  ((BitVec.zeroExtend 64 (P 11#4)) <<< 44) |||
+  ((BitVec.zeroExtend 64 (P 12#4)) <<< 48) |||
+  ((BitVec.zeroExtend 64 (P 13#4)) <<< 52) |||
+  ((BitVec.zeroExtend 64 (P 14#4)) <<< 56) |||
+  ((BitVec.zeroExtend 64 (P 15#4)) <<< 60)
+
+theorem ame4_affine_rigidity_nogo (lut : BitVec 64)
+    (h : is2Unitary4Lut lut = true) : isAffine4Lut lut = true := by
+  simp only [is2Unitary4Lut, allDistinct16Lut, isLatinC4, isLatinD4, isAffine4Lut,
+             allDistinct4BV2, getNib4, hi2, lo2, List.range, List.range.loop, List.all,
+             Bool.and_true] at h ⊢
+  bv_decide
+
+theorem ame4_eval_packLut4 (P : BitVec 4 → BitVec 4)
+    (h : is2Unitary4Lut (packLut4 P) = true) : isAffine4Lut (packLut4 P) = true :=
+  ame4_affine_rigidity_nogo (packLut4 P) h
+
+/-! ## Section 15: 3+1D 4-Simplex Equation (`|X|=2` on `BitVec 10` & `|X|=4` on `BitVec 20`) -/
+
+def get1_10 (s : BitVec 10) (idx : Nat) : BitVec 1 :=
+  BitVec.extractLsb' (9 - idx) 1 s
+
+def set1_10 (s : BitVec 10) (idx : Nat) (v : BitVec 1) : BitVec 10 :=
+  let sh := 9 - idx
+  let clr : BitVec 10 := ~~~((1#10) <<< sh)
+  (s &&& clr) ||| ((BitVec.zeroExtend 10 v) <<< sh)
+
+def simplex4Apply2 (S : BitVec 4 → BitVec 4) (i j k l : Nat) (s : BitVec 10) : BitVec 10 :=
+  let u : BitVec 4 := get1_10 s i ++ get1_10 s j ++ get1_10 s k ++ get1_10 s l
+  let o : BitVec 4 := S u
+  let s1 := set1_10 s i (BitVec.extractLsb' 3 1 o)
+  let s2 := set1_10 s1 j (BitVec.extractLsb' 2 1 o)
+  let s3 := set1_10 s2 k (BitVec.extractLsb' 1 1 o)
+  set1_10 s3 l (BitVec.extractLsb' 0 1 o)
+
+def IsSetTheoretic4Simplex2 (S : BitVec 4 → BitVec 4) : Prop :=
+  ∀ s : BitVec 10,
+    simplex4Apply2 S 0 1 3 6 (simplex4Apply2 S 0 2 4 7 (simplex4Apply2 S 1 2 5 8
+      (simplex4Apply2 S 3 4 5 9 (simplex4Apply2 S 6 7 8 9 s)))) =
+    simplex4Apply2 S 6 7 8 9 (simplex4Apply2 S 3 4 5 9 (simplex4Apply2 S 1 2 5 8
+      (simplex4Apply2 S 0 2 4 7 (simplex4Apply2 S 0 1 3 6 s))))
+
+def ccx02_4 (u : BitVec 4) : BitVec 4 :=
+  u ^^^ (((BitVec.extractLsb' 3 1 u &&& BitVec.extractLsb' 1 1 u).zeroExtend 4) <<< 2)
+
+def ccx13_4 (u : BitVec 4) : BitVec 4 :=
+  u ^^^ (((BitVec.extractLsb' 2 1 u &&& BitVec.extractLsb' 0 1 u).zeroExtend 4) <<< 1)
+
+def cccx1_4 (u : BitVec 4) : BitVec 4 :=
+  u ^^^ (((BitVec.extractLsb' 3 1 u &&& BitVec.extractLsb' 1 1 u &&&
+            BitVec.extractLsb' 0 1 u).zeroExtend 4) <<< 2)
+
+theorem ccx02_satisfies_4simplex2 : IsSetTheoretic4Simplex2 ccx02_4 := by
+  intro s
+  simp only [simplex4Apply2, get1_10, set1_10, ccx02_4]
+  bv_decide
+
+theorem ccx13_satisfies_4simplex2 : IsSetTheoretic4Simplex2 ccx13_4 := by
+  intro s
+  simp only [simplex4Apply2, get1_10, set1_10, ccx13_4]
+  bv_decide
+
+theorem cccx1_witness_fails_4simplex2 (s : BitVec 10)
+    (h : simplex4Apply2 cccx1_4 0 1 3 6 (simplex4Apply2 cccx1_4 0 2 4 7 (simplex4Apply2 cccx1_4 1 2 5 8
+           (simplex4Apply2 cccx1_4 3 4 5 9 (simplex4Apply2 cccx1_4 6 7 8 9 s)))) ≠
+         simplex4Apply2 cccx1_4 6 7 8 9 (simplex4Apply2 cccx1_4 3 4 5 9 (simplex4Apply2 cccx1_4 1 2 5 8
+           (simplex4Apply2 cccx1_4 0 2 4 7 (simplex4Apply2 cccx1_4 0 1 3 6 s))))) :
+    ¬ IsSetTheoretic4Simplex2 cccx1_4 :=
+  fun hAll => h (hAll s)
+
+theorem cccx1_fails_4simplex2 : ¬ IsSetTheoretic4Simplex2 cccx1_4 :=
+  cccx1_witness_fails_4simplex2 0x3DF#10 (by decide)
+
+def get2_20 (s : BitVec 20) (idx : Nat) : BitVec 2 :=
+  BitVec.extractLsb' (2 * (9 - idx)) 2 s
+
+def set2_20 (s : BitVec 20) (idx : Nat) (v : BitVec 2) : BitVec 20 :=
+  let sh := 2 * (9 - idx)
+  let clr : BitVec 20 := ~~~((3#20) <<< sh)
+  (s &&& clr) ||| ((BitVec.zeroExtend 20 v) <<< sh)
+
+def simplex4Apply4 (S : BitVec 8 → BitVec 8) (i j k l : Nat) (s : BitVec 20) : BitVec 20 :=
+  let u : BitVec 8 := get2_20 s i ++ get2_20 s j ++ get2_20 s k ++ get2_20 s l
+  let o : BitVec 8 := S u
+  let s1 := set2_20 s i (BitVec.extractLsb' 6 2 o)
+  let s2 := set2_20 s1 j (BitVec.extractLsb' 4 2 o)
+  let s3 := set2_20 s2 k (BitVec.extractLsb' 2 2 o)
+  set2_20 s3 l (BitVec.extractLsb' 0 2 o)
+
+def IsSetTheoretic4Simplex4 (S : BitVec 8 → BitVec 8) : Prop :=
+  ∀ s : BitVec 20,
+    simplex4Apply4 S 0 1 3 6 (simplex4Apply4 S 0 2 4 7 (simplex4Apply4 S 1 2 5 8
+      (simplex4Apply4 S 3 4 5 9 (simplex4Apply4 S 6 7 8 9 s)))) =
+    simplex4Apply4 S 6 7 8 9 (simplex4Apply4 S 3 4 5 9 (simplex4Apply4 S 1 2 5 8
+      (simplex4Apply4 S 0 2 4 7 (simplex4Apply4 S 0 1 3 6 s))))
+
+def s4RingLift (u : BitVec 8) : BitVec 8 :=
+  let a := BitVec.extractLsb' 6 2 u
+  let b := BitVec.extractLsb' 4 2 u
+  let c := BitVec.extractLsb' 2 2 u
+  let d := BitVec.extractLsb' 0 2 u
+  a ++ (b + a * c) ++ c ++ d
+
+def s4RingLiftInv (u : BitVec 8) : BitVec 8 :=
+  let a := BitVec.extractLsb' 6 2 u
+  let b := BitVec.extractLsb' 4 2 u
+  let c := BitVec.extractLsb' 2 2 u
+  let d := BitVec.extractLsb' 0 2 u
+  a ++ (b - a * c) ++ c ++ d
+
+def s4RingDual (u : BitVec 8) : BitVec 8 :=
+  let a := BitVec.extractLsb' 6 2 u
+  let b := BitVec.extractLsb' 4 2 u
+  let c := BitVec.extractLsb' 2 2 u
+  let d := BitVec.extractLsb' 0 2 u
+  a ++ b ++ (c + b * d) ++ d
+
+def s4Coupled4Ch (u : BitVec 8) : BitVec 8 :=
+  let a := BitVec.extractLsb' 6 2 u
+  let b := BitVec.extractLsb' 4 2 u
+  let c := BitVec.extractLsb' 2 2 u
+  let d := BitVec.extractLsb' 0 2 u
+  let b' := b ^^^ ((a &&& c) &&& 1#2)
+  let c' := c ^^^ ((b &&& d) &&& 2#2)
+  a ++ b' ++ c' ++ d
+
+theorem s4RingLift_inv_left (u : BitVec 8) : s4RingLiftInv (s4RingLift u) = u := by
+  simp only [s4RingLift, s4RingLiftInv]
+  bv_decide
+
+theorem s4RingLift_inv_right (u : BitVec 8) : s4RingLift (s4RingLiftInv u) = u := by
+  simp only [s4RingLift, s4RingLiftInv]
+  bv_decide
+
+theorem s4RingLift_bijective : Bijective s4RingLift := by
+  refine ⟨fun a b h => ?_, fun b => ⟨s4RingLiftInv b, s4RingLift_inv_right b⟩⟩
+  have h1 := congrArg s4RingLiftInv h
+  simpa [s4RingLift_inv_left] using h1
+
+theorem s4RingLift_noninvolutive : ¬ (∀ u : BitVec 8, s4RingLift (s4RingLift u) = u) := by
+  intro h
+  have hw := h (1#2 ++ 0#2 ++ 1#2 ++ 0#2)
+  revert hw
+  decide
+
+theorem s4RingLift_satisfies_4simplex4 : IsSetTheoretic4Simplex4 s4RingLift := by
+  intro s
+  simp only [simplex4Apply4, get2_20, set2_20, s4RingLift]
+  bv_decide
+
+theorem s4RingDual_satisfies_4simplex4 : IsSetTheoretic4Simplex4 s4RingDual := by
+  intro s
+  simp only [simplex4Apply4, get2_20, set2_20, s4RingDual]
+  bv_decide
+
+theorem s4Coupled4Ch_satisfies_4simplex4 : IsSetTheoretic4Simplex4 s4Coupled4Ch := by
+  intro s
+  simp only [simplex4Apply4, get2_20, set2_20, s4Coupled4Ch]
+  bv_decide
+
+def Is4ChannelCoupled4 (S : BitVec 8 → BitVec 8) : Prop :=
+  (∃ a0 a1 b c d : BitVec 2,
+      BitVec.extractLsb' 4 2 (S (a1 ++ b ++ c ++ d)) ≠
+        BitVec.extractLsb' 4 2 (S (a0 ++ b ++ c ++ d))) ∧
+  (∃ a b0 b1 c d : BitVec 2,
+      BitVec.extractLsb' 2 2 (S (a ++ b1 ++ c ++ d)) ≠
+        BitVec.extractLsb' 2 2 (S (a ++ b0 ++ c ++ d))) ∧
+  (∃ a b c0 c1 d : BitVec 2,
+      BitVec.extractLsb' 4 2 (S (a ++ b ++ c1 ++ d)) ≠
+        BitVec.extractLsb' 4 2 (S (a ++ b ++ c0 ++ d))) ∧
+  (∃ a b c d0 d1 : BitVec 2,
+      BitVec.extractLsb' 2 2 (S (a ++ b ++ c ++ d1)) ≠
+        BitVec.extractLsb' 2 2 (S (a ++ b ++ c ++ d0)))
+
+theorem s4Coupled4Ch_4channel_coupled : Is4ChannelCoupled4 s4Coupled4Ch :=
+  ⟨⟨0#2, 1#2, 0#2, 1#2, 0#2, by decide⟩,
+   ⟨0#2, 0#2, 2#2, 0#2, 2#2, by decide⟩,
+   ⟨1#2, 0#2, 0#2, 1#2, 0#2, by decide⟩,
+   ⟨0#2, 2#2, 0#2, 0#2, 2#2, by decide⟩⟩
+
+/-! ## Section 16: Knot Cohomology (`H^2_Q(Q_6, Z_4)`) & Trefoil Chirality -/
+
+def sumFin6 (f : Fin 6 → Nat) : Nat :=
+  f 0 + f 1 + f 2 + f 3 + f 4 + f 5
+
+def allFin6 (p : Fin 6 → Bool) : Bool :=
+  p 0 && p 1 && p 2 && p 3 && p 4 && p 5
+
+def q6Act (b a : Fin 6) : Fin 6 :=
+  match b.val, a.val with
+  | 0, 0 => 0 | 0, 1 => 1 | 0, 2 => 3 | 0, 3 => 4 | 0, 4 => 5 | 0, 5 => 2
+  | 1, 0 => 0 | 1, 1 => 1 | 1, 2 => 5 | 1, 3 => 2 | 1, 4 => 3 | 1, 5 => 4
+  | 2, 0 => 5 | 2, 1 => 3 | 2, 2 => 2 | 2, 3 => 0 | 2, 4 => 4 | 2, 5 => 1
+  | 3, 0 => 2 | 3, 1 => 4 | 3, 2 => 1 | 3, 3 => 3 | 3, 4 => 0 | 3, 5 => 5
+  | 4, 0 => 3 | 4, 1 => 5 | 4, 2 => 2 | 4, 3 => 1 | 4, 4 => 4 | 4, 5 => 0
+  | 5, 0 => 4 | 5, 1 => 2 | 5, 2 => 0 | 5, 3 => 3 | 5, 4 => 1 | 5, 5 => 5
+  | _, _ => a
+
+def q6R (p : Fin 6 × Fin 6) : Fin 6 × Fin 6 :=
+  (p.2, q6Act p.2 p.1)
+
+def q6RInv (p : Fin 6 × Fin 6) : Fin 6 × Fin 6 :=
+  (q6Act p.1 (q6Act p.1 (q6Act p.1 p.2)), p.1)
+
+def q6Phi (p : Fin 6 × Fin 6) : BitVec 2 :=
+  match p.1.val, p.2.val with
+  | 0, 0 => 0#2 | 0, 1 => 1#2 | 0, 2 => 0#2 | 0, 3 => 0#2 | 0, 4 => 0#2 | 0, 5 => 1#2
+  | 1, 0 => 1#2 | 1, 1 => 0#2 | 1, 2 => 2#2 | 1, 3 => 2#2 | 1, 4 => 0#2 | 1, 5 => 3#2
+  | 2, 0 => 0#2 | 2, 1 => 1#2 | 2, 2 => 0#2 | 2, 3 => 2#2 | 2, 4 => 1#2 | 2, 5 => 1#2
+  | 3, 0 => 1#2 | 3, 1 => 1#2 | 3, 2 => 1#2 | 3, 3 => 0#2 | 3, 4 => 3#2 | 3, 5 => 1#2
+  | 4, 0 => 3#2 | 4, 1 => 0#2 | 4, 2 => 1#2 | 4, 3 => 0#2 | 4, 4 => 0#2 | 4, 5 => 3#2
+  | 5, 0 => 0#2 | 5, 1 => 2#2 | 5, 2 => 1#2 | 5, 3 => 1#2 | 5, 4 => 1#2 | 5, 5 => 0#2
+  | _, _ => 0#2
+
+def IsSetTheoreticYB6 (R : Fin 6 × Fin 6 → Fin 6 × Fin 6) : Prop :=
+  ∀ a b c : Fin 6,
+    let ab := R (a, b)
+    let bc := R (ab.2, c)
+    let ab2 := R (ab.1, bc.1)
+    let bc0 := R (b, c)
+    let ab0 := R (a, bc0.1)
+    let bc1 := R (ab0.2, bc0.2)
+    (ab2.1, ab2.2, bc.2) = (ab0.1, bc1.1, bc1.2)
+
+def IsR1_6 (R : Fin 6 × Fin 6 → Fin 6 × Fin 6) : Prop :=
+  ∀ x : Fin 6, R (x, x) = (x, x)
+
+def Is2CocycleMod4_6 (R : Fin 6 × Fin 6 → Fin 6 × Fin 6) (phi : Fin 6 × Fin 6 → BitVec 2) :
+    Prop :=
+  (∀ x : Fin 6, phi (x, x) = 0#2) ∧
+    ∀ a b c : Fin 6,
+      let ab := R (a, b)
+      let bc := R (ab.2, c)
+      let bc0 := R (b, c)
+      let ab0 := R (a, bc0.1)
+      phi (a, b) + phi (ab.2, c) + phi (ab.1, bc.1) =
+        phi (b, c) + phi (a, bc0.1) + phi (ab0.2, bc0.2)
+
+def coboundary2 {α : Type} (R : α × α → α × α) (f : α → BitVec 2) (u : α × α) : BitVec 2 :=
+  let v := R u
+  (f v.1 + f v.2) - (f u.1 + f u.2)
+
+def Is2CoboundaryMod4_6 (R : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) : Prop :=
+  ∃ f : Fin 6 → BitVec 2, ∀ u : Fin 6 × Fin 6, phi u = coboundary2 R f u
+
+def iterPair {α : Type} (R : α × α → α × α) : Nat → α × α → α × α
+  | 0, u => u
+  | k + 1, u => iterPair R k (R u)
+
+def orbitCocycleSum {α : Type} (R : α × α → α × α) (phi : α × α → BitVec 2) :
+    Nat → α × α → BitVec 2
+  | 0, _ => 0#2
+  | k + 1, u => phi u + orbitCocycleSum R phi k (R u)
+
+private theorem bv2_tel (a b c : BitVec 2) : (b - a) + (c - b) = c - a := by
+  bv_decide
+
+private theorem bv2_sub_self (a : BitVec 2) : a - a = 0#2 := by
+  bv_decide
+
+theorem orbitCocycleSum_coboundary {α : Type} (R : α × α → α × α) (f : α → BitVec 2) :
+    ∀ (k : Nat) (u : α × α),
+      orbitCocycleSum R (coboundary2 R f) k u =
+        (f (iterPair R k u).1 + f (iterPair R k u).2) - (f u.1 + f u.2)
+  | 0, u => by
+    simp [orbitCocycleSum, iterPair]
+  | k + 1, u => by
+    simp only [orbitCocycleSum, iterPair]
+    rw [orbitCocycleSum_coboundary R f k (R u)]
+    unfold coboundary2
+    exact bv2_tel (f u.1 + f u.2) (f (R u).1 + f (R u).2)
+      (f (iterPair R k (R u)).1 + f (iterPair R k (R u)).2)
+
+theorem coboundary_vanishes_torus2k {α : Type} (R : α × α → α × α) (f : α → BitVec 2)
+    (k : Nat) (u : α × α) (hFix : iterPair R k u = u) :
+    orbitCocycleSum R (coboundary2 R f) k u = 0#2 := by
+  rw [orbitCocycleSum_coboundary, hFix, bv2_sub_self]
+
+private theorem orbitCocycleSum_eq_coboundary {α : Type} (R : α × α → α × α)
+    (phi : α × α → BitVec 2) (f : α → BitVec 2) (hf : ∀ u, phi u = coboundary2 R f u) :
+    ∀ (k : Nat) (u : α × α),
+      orbitCocycleSum R phi k u = orbitCocycleSum R (coboundary2 R f) k u
+  | 0, _ => rfl
+  | k + 1, u => by
+    simp only [orbitCocycleSum, hf u, orbitCocycleSum_eq_coboundary R phi f hf k (R u)]
+
+theorem q6_non_coboundary_of_witness (R : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) (k : Nat) (u : Fin 6 × Fin 6)
+    (hFix : iterPair R k u = u) (hNz : orbitCocycleSum R phi k u ≠ 0#2) :
+    ¬ Is2CoboundaryMod4_6 R phi := by
+  rintro ⟨f, hf⟩
+  have hEq := orbitCocycleSum_eq_coboundary R phi f hf k u
+  rw [coboundary_vanishes_torus2k R f k u hFix] at hEq
+  exact hNz hEq
+
+def iterPairPhiSum (R : Fin 6 × Fin 6 → Fin 6 × Fin 6) (phi : Fin 6 × Fin 6 → BitVec 2) :
+    Nat → Fin 6 × Fin 6 → Fin 6 × Fin 6 × BitVec 2
+  | 0, u => (u.1, u.2, 0#2)
+  | k + 1, u =>
+    let res := iterPairPhiSum R phi k (R u)
+    (res.1, res.2.1, phi u + res.2.2)
+
+def iterPairInvPhiSum (RInv : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) :
+    Nat → Fin 6 × Fin 6 → Fin 6 × Fin 6 × BitVec 2
+  | 0, u => (u.1, u.2, 0#2)
+  | k + 1, u =>
+    let y := RInv u
+    let res := iterPairInvPhiSum RInv phi k y
+    (res.1, res.2.1, (0#2 - phi y) + res.2.2)
+
+def cocycleCountTorus2Pos (R : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) (k : Nat) (w : BitVec 2) : Nat :=
+  sumFin6 fun a => sumFin6 fun b =>
+    let res := iterPairPhiSum R phi k (a, b)
+    if (res.1 == a) && (res.2.1 == b) && (res.2.2 == w) then 1 else 0
+
+def cocycleCountTorus2Neg (RInv : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) (k : Nat) (w : BitVec 2) : Nat :=
+  sumFin6 fun a => sumFin6 fun b =>
+    let res := iterPairInvPhiSum RInv phi k (a, b)
+    if (res.1 == a) && (res.2.1 == b) && (res.2.2 == w) then 1 else 0
+
+def fig8CocycleStep (R RInv : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) (a b c : Fin 6) (s0 : BitVec 2) :
+    Fin 6 × Fin 6 × Fin 6 × BitVec 2 :=
+  let u1 := (a, b)
+  let o1 := R u1
+  let s1 := s0 + phi u1
+  let o2 := RInv (o1.2, c)
+  let s2 := s1 + (0#2 - phi o2)
+  (o1.1, o2.1, o2.2, s2)
+
+def cocycleCountFig8 (R RInv : Fin 6 × Fin 6 → Fin 6 × Fin 6)
+    (phi : Fin 6 × Fin 6 → BitVec 2) (w : BitVec 2) : Nat :=
+  sumFin6 fun a => sumFin6 fun b => sumFin6 fun c =>
+    let st1 := fig8CocycleStep R RInv phi a b c 0#2
+    let st2 := fig8CocycleStep R RInv phi st1.1 st1.2.1 st1.2.2.1 st1.2.2.2
+    if (st2.1 == a) && (st2.2.1 == b) && (st2.2.2.1 == c) && (st2.2.2.2 == w) then 1 else 0
+
+private theorem fin6_cases (x : Fin 6) :
+    x = 0 ∨ x = 1 ∨ x = 2 ∨ x = 3 ∨ x = 4 ∨ x = 5 := by
+  rcases x with ⟨v, hv⟩
+  match v, hv with
+  | 0, _ => exact Or.inl rfl
+  | 1, _ => exact Or.inr (Or.inl rfl)
+  | 2, _ => exact Or.inr (Or.inr (Or.inl rfl))
+  | 3, _ => exact Or.inr (Or.inr (Or.inr (Or.inl rfl)))
+  | 4, _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))
+  | 5, _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))
+
+theorem q6_inv_left (u : Fin 6 × Fin 6) : q6RInv (q6R u) = u := by
+  rcases u with ⟨a, b⟩
+  rcases fin6_cases a with rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rcases fin6_cases b with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+
+theorem q6_inv_right (u : Fin 6 × Fin 6) : q6R (q6RInv u) = u := by
+  rcases u with ⟨a, b⟩
+  rcases fin6_cases a with rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rcases fin6_cases b with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+
+theorem q6_bijective : Bijective q6R := by
+  refine ⟨fun a b h => ?_, fun b => ⟨q6RInv b, q6_inv_right b⟩⟩
+  have h1 := congrArg q6RInv h
+  simpa [q6_inv_left] using h1
+
+theorem q6_r1 : IsR1_6 q6R := by
+  intro x
+  rcases fin6_cases x with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+
+theorem q6_satisfies_ybe : IsSetTheoreticYB6 q6R := by
+  intro a b c
+  rcases fin6_cases a with rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rcases fin6_cases b with rfl | rfl | rfl | rfl | rfl | rfl <;>
+    rcases fin6_cases c with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+
+theorem q6_noninvolutive : q6R (q6R (0, 2)) ≠ (0, 2) := by
+  decide
+
+theorem q6_phi_is_2cocycle : Is2CocycleMod4_6 q6R q6Phi := by
+  refine ⟨fun x => ?_, fun a b c => ?_⟩
+  · rcases fin6_cases x with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+  · rcases fin6_cases a with rfl | rfl | rfl | rfl | rfl | rfl <;>
+      rcases fin6_cases b with rfl | rfl | rfl | rfl | rfl | rfl <;>
+      rcases fin6_cases c with rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+
+theorem q6_phi_not_coboundary : ¬ Is2CoboundaryMod4_6 q6R q6Phi :=
+  q6_non_coboundary_of_witness q6R q6Phi 3 (0, 2) (by decide) (by decide)
+
+theorem q6_trefoil_chiral_separation :
+    cocycleCountTorus2Pos q6R q6Phi 1 0#2 = 6 ∧
+    cocycleCountTorus2Pos q6R q6Phi 2 0#2 = 6 ∧
+    cocycleCountTorus2Pos q6R q6Phi 2 2#2 = 6 ∧
+    cocycleCountTorus2Pos q6R q6Phi 3 1#2 = 24 ∧
+    cocycleCountTorus2Neg q6RInv q6Phi 3 1#2 = 0 ∧
+    cocycleCountTorus2Pos q6R q6Phi 3 3#2 = 0 ∧
+    cocycleCountTorus2Neg q6RInv q6Phi 3 3#2 = 24 ∧
+    cocycleCountFig8 q6R q6RInv q6Phi 0#2 = 6 := by
+  decide
+
+/-! ## Section 17: Exact `Z[i]` Quantum Dual-Unitary, Quantum Scar & Period-2 DTC -/
+
+structure GaussInt where
+  re : Int
+  im : Int
+  deriving DecidableEq, Repr
+
+def gZero : GaussInt := ⟨0, 0⟩
+def gOne : GaussInt := ⟨1, 0⟩
+def gI : GaussInt := ⟨0, 1⟩
+def gAdd (x y : GaussInt) : GaussInt := ⟨x.re + y.re, x.im + y.im⟩
+def gMul (x y : GaussInt) : GaussInt := ⟨x.re * y.re - x.im * y.im, x.re * y.im + x.im * y.re⟩
+def gConj (x : GaussInt) : GaussInt := ⟨x.re, -x.im⟩
+
+def gSumFin4 (f : Fin 4 → GaussInt) : GaussInt :=
+  gAdd (gAdd (f 0) (f 1)) (gAdd (f 2) (f 3))
+
+def gSumBV4 (f : BitVec 4 → GaussInt) : GaussInt :=
+  gSumFin4 fun hi : Fin 4 =>
+    gSumFin4 fun lo : Fin 4 =>
+      f (BitVec.ofNat 2 hi.val ++ BitVec.ofNat 2 lo.val)
+
+def wCxDU (i j : Fin 4) : GaussInt :=
+  match i.val, j.val with
+  | 0, 0 => ⟨1, 0⟩  | 0, 1 => ⟨0, 1⟩  | 0, 2 => ⟨1, 0⟩  | 0, 3 => ⟨0, -1⟩
+  | 1, 0 => ⟨1, 0⟩  | 1, 1 => ⟨0, 1⟩  | 1, 2 => ⟨-1, 0⟩ | 1, 3 => ⟨0, 1⟩
+  | 2, 0 => ⟨1, 0⟩  | 2, 1 => ⟨0, -1⟩ | 2, 2 => ⟨1, 0⟩  | 2, 3 => ⟨0, 1⟩
+  | 3, 0 => ⟨1, 0⟩  | 3, 1 => ⟨0, -1⟩ | 3, 2 => ⟨-1, 0⟩ | 3, 3 => ⟨0, -1⟩
+  | _, _ => gZero
+
+def wCxDUReshuffle (ac bd : Fin 4) : GaussInt :=
+  let a := ac.val / 2
+  let c := ac.val % 2
+  let b := bd.val / 2
+  let d := bd.val % 2
+  wCxDU ⟨c * 2 + d, by omega⟩ ⟨a * 2 + b, by omega⟩
+
+theorem wCxDU_is_unitary (j k : Fin 4) :
+    gSumFin4 (fun i => gMul (gConj (wCxDU i j)) (wCxDU i k)) =
+      if j == k then ⟨4, 0⟩ else gZero := by
+  revert j k
+  decide
+
+theorem wCxDU_is_dual_unitary (j k : Fin 4) :
+    gSumFin4 (fun i => gMul (gConj (wCxDUReshuffle i j)) (wCxDUReshuffle i k)) =
+      if j == k then ⟨4, 0⟩ else gZero := by
+  revert j k
+  decide
+
+theorem wCxDU_full_superposition (i j : Fin 4) : wCxDU i j ≠ gZero := by
+  revert i j
+  decide
+
+def scarGate4 (sOut sIn : BitVec 4) : GaussInt :=
+  let b0 := BitVec.extractLsb' 0 1 sIn
+  let b3 := BitVec.extractLsb' 3 1 sIn
+  if b0 != b3 then
+    if sOut == sIn then ⟨2, 0⟩ else gZero
+  else
+    let b0' := BitVec.extractLsb' 0 1 sOut
+    let b3' := BitVec.extractLsb' 3 1 sOut
+    if (b0' == b0) && (b3' == b3) then
+      let mOut := (BitVec.extractLsb' 2 1 sOut).toNat * 2 + (BitVec.extractLsb' 1 1 sOut).toNat
+      let mIn := (BitVec.extractLsb' 2 1 sIn).toNat * 2 + (BitVec.extractLsb' 1 1 sIn).toNat
+      wCxDU ⟨mOut, by omega⟩ ⟨mIn, by omega⟩
+    else gZero
+
+theorem scarGate4_is_unitary (j k : BitVec 4) :
+    gSumBV4 (fun i => gMul (gConj (scarGate4 i j)) (scarGate4 i k)) =
+      if j == k then ⟨4, 0⟩ else gZero := by
+  revert j k
+  decide
+
+def neel0 (L : Nat) (i : Fin L) : Bool := (i.val % 2 == 1)
+def neel1 (L : Nat) (i : Fin L) : Bool := (i.val % 2 == 0)
+
+def flipAll {L : Nat} (s : Fin L → Bool) (i : Fin L) : Bool := !(s i)
+
+theorem dtc_neel_local_protected {L : Nat} (hGe : 4 ≤ L) (hEven : L % 2 = 0) (i : Fin L) :
+    neel0 L i ≠ neel0 L ⟨(i.val + 3) % L, Nat.mod_lt _ (by omega)⟩ ∧
+    neel1 L i ≠ neel1 L ⟨(i.val + 3) % L, Nat.mod_lt _ (by omega)⟩ := by
+  have hMod : (i.val + 3) % L % 2 = (i.val + 3) % 2 :=
+    Nat.mod_mod_of_dvd (i.val + 3) (Nat.dvd_of_mod_eq_zero hEven)
+  simp only [neel0, neel1, hMod]
+  rcases Nat.mod_two_eq_zero_or_one i.val with h | h <;> simp [Nat.add_mod, h]
+
+theorem dtc_neel_exact_period2 {L : Nat} (hGe : 4 ≤ L) :
+    flipAll (neel0 L) = neel1 L ∧
+    flipAll (neel1 L) = neel0 L ∧
+    neel0 L ≠ neel1 L ∧
+    flipAll (flipAll (neel0 L)) = neel0 L := by
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · funext i; simp only [flipAll, neel0, neel1]
+    rcases Nat.mod_two_eq_zero_or_one i.val with h | h <;> simp [h]
+  · funext i; simp only [flipAll, neel0, neel1]
+    rcases Nat.mod_two_eq_zero_or_one i.val with h | h <;> simp [h]
+  · intro h
+    have h0 := congrFun h ⟨0, by omega⟩
+    simp [neel0, neel1] at h0
+  · funext i; simp [flipAll]
+
+/-! ## Section 18: Fracton Universal Involution & Dipole-Carrier Reversible Toffoli -/
+
+theorem fracton3_universal_involution (T : BitVec 6 → BitVec 6)
+    (hBij : Bijective T) (hLap : SatisfiesDipoleLaplacian T rho2) (u : BitVec 6) :
+    T (T u) = u := by
+  have h2 : ∀ p q r : BitVec 6,
+      (let dp := rho2 (site0_3 q) - rho2 (site0_3 p)
+       rho2 (site1_3 q) - rho2 (site1_3 p) = -(2 * dp) ∧
+       rho2 (site2_3 q) - rho2 (site2_3 p) = dp) →
+      (let dr := rho2 (site0_3 r) - rho2 (site0_3 p)
+       rho2 (site1_3 r) - rho2 (site1_3 p) = -(2 * dr) ∧
+       rho2 (site2_3 r) - rho2 (site2_3 p) = dr) →
+      r = p ∨ r = q ∨ q = p := by
+    intro p q r hq hr
+    have hp : p = pack3_2 (site0_3 p) (site1_3 p) (site2_3 p) := (pack3_2_sites p).symm
+    have hq' : q = pack3_2 (site0_3 q) (site1_3 q) (site2_3 q) := (pack3_2_sites q).symm
+    have hr' : r = pack3_2 (site0_3 r) (site1_3 r) (site2_3 r) := (pack3_2_sites r).symm
+    have hphi : ∀ a b c a' b' c' : BitVec 2,
+        let phi := rho2 a' - rho2 a
+        rho2 b' - rho2 b = -(2 * phi) → rho2 c' - rho2 c = phi →
+        (a' = a ∧ b' = b ∧ c' = c) ∨
+        (rho2 a' = rho2 a + 1 ∧ rho2 b' = rho2 b - 2 ∧ rho2 c' = rho2 c + 1) ∨
+        (rho2 a' = rho2 a - 1 ∧ rho2 b' = rho2 b + 2 ∧ rho2 c' = rho2 c - 1) := by
+      decide
+    have h1 := hphi (site0_3 p) (site1_3 p) (site2_3 p) (site0_3 q) (site1_3 q) (site2_3 q) hq.1 hq.2
+    have h2' := hphi (site0_3 p) (site1_3 p) (site2_3 p) (site0_3 r) (site1_3 r) (site2_3 r) hr.1 hr.2
+    have huniq : ∀ x y : BitVec 2, rho2 x = rho2 y → x = y := by decide
+    have hno_both : ∀ b b1 b2 : BitVec 2,
+        rho2 b1 = rho2 b - 2 → rho2 b2 = rho2 b + 2 → False := by decide
+    rcases h1 with ⟨ha1, hb1, hc1⟩ | ⟨ha1, hb1, hc1⟩ | ⟨ha1, hb1, hc1⟩
+    · exact Or.inr (Or.inr (by rw [hq', hp, ha1, hb1, hc1]))
+    · rcases h2' with ⟨ha2, hb2, hc2⟩ | ⟨ha2, hb2, hc2⟩ | ⟨ha2, hb2, hc2⟩
+      · exact Or.inl (by rw [hr', hp, ha2, hb2, hc2])
+      · exact Or.inr (Or.inl (by
+          rw [hr', hq']
+          rw [huniq _ _ (ha2.trans ha1.symm), huniq _ _ (hb2.trans hb1.symm),
+              huniq _ _ (hc2.trans hc1.symm)]))
+      · exact False.elim (hno_both _ _ _ hb1 hb2)
+    · rcases h2' with ⟨ha2, hb2, hc2⟩ | ⟨ha2, hb2, hc2⟩ | ⟨ha2, hb2, hc2⟩
+      · exact Or.inl (by rw [hr', hp, ha2, hb2, hc2])
+      · exact False.elim (hno_both _ _ _ hb2 hb1)
+      · exact Or.inr (Or.inl (by
+          rw [hr', hq']
+          rw [huniq _ _ (ha2.trans ha1.symm), huniq _ _ (hb2.trans hb1.symm),
+              huniq _ _ (hc2.trans hc1.symm)]))
+  by_cases hfix : T u = u
+  · rw [hfix, hfix]
+  · have hTu := hLap (site0_3 u) (site1_3 u) (site2_3 u)
+    rw [pack3_2_sites] at hTu
+    have hTTu := hLap (site0_3 (T u)) (site1_3 (T u)) (site2_3 (T u))
+    rw [pack3_2_sites] at hTTu
+    have hTTu_lap : (let dp := rho2 (site0_3 (T (T u))) - rho2 (site0_3 u)
+        rho2 (site1_3 (T (T u))) - rho2 (site1_3 u) = -(2 * dp) ∧
+        rho2 (site2_3 (T (T u))) - rho2 (site2_3 u) = dp) := by
+      dsimp only at hTu hTTu ⊢
+      constructor <;> omega
+    rcases h2 u (T u) (T (T u)) hTu hTTu_lap with hEq | hEq | hEq
+    · exact hEq
+    · exact False.elim (hfix (hBij.1 (T u) u hEq))
+    · exact False.elim (hfix hEq)
+
+def dipoleToffoli (u : BitVec 6) : BitVec 6 :=
+  if u == pack3_2 1#2 2#2 1#2 then pack3_2 2#2 0#2 2#2
+  else if u == pack3_2 2#2 0#2 2#2 then pack3_2 1#2 2#2 1#2
+  else u
+
+def encodeDipoleLogical (ca cc tgt : Bool) : BitVec 6 :=
+  if ca && cc && tgt then pack3_2 2#2 0#2 2#2
+  else pack3_2 (if ca then 1#2 else 0#2) (if tgt then 0#2 else 2#2) (if cc then 1#2 else 0#2)
+
+def decodeDipoleTarget (u : BitVec 6) : Bool :=
+  site1_3 u == 0#2
+
+theorem dipoleToffoli_involutive (u : BitVec 6) : dipoleToffoli (dipoleToffoli u) = u := by
+  revert u
+  decide
+
+theorem dipoleToffoli_bijective : Bijective dipoleToffoli := by
+  refine ⟨fun a b h => ?_, fun b => ⟨dipoleToffoli b, dipoleToffoli_involutive b⟩⟩
+  have h1 := congrArg dipoleToffoli h
+  simpa [dipoleToffoli_involutive] using h1
+
+theorem dipoleToffoli_satisfies_laplacian : SatisfiesDipoleLaplacian dipoleToffoli rho2 := by
+  unfold SatisfiesDipoleLaplacian rho2
+  decide
+
+theorem dipole_static_control_nogo (T : BitVec 6 → BitVec 6)
+    (hL : SatisfiesDipoleLaplacian T rho2) (u : BitVec 6)
+    (h0 : site0_3 (T u) = site0_3 u) (h2 : site2_3 (T u) = site2_3 u) :
+    T u = u := by
+  have h := hL (site0_3 u) (site1_3 u) (site2_3 u)
+  rw [pack3_2_sites] at h
+  dsimp only at h
+  rw [h0] at h
+  have h1 : site1_3 (T u) = site1_3 u := by
+    have hs : rho2 (site1_3 (T u)) = rho2 (site1_3 u) := by omega
+    have hinj : ∀ x y : BitVec 2, rho2 x = rho2 y → x = y := by decide
+    exact hinj _ _ hs
+  rw [← pack3_2_sites (T u), h0, h1, h2, pack3_2_sites]
+
+theorem dipoleToffoli_open_chain_Q_D {L : Nat} (pos : Nat) (hpos : pos + 2 < L)
+    (s : Fin L → BitVec 2) :
+    openCharge L rho2 (applyGate3 dipoleToffoli pos hpos s) = openCharge L rho2 s ∧
+    openDipole L rho2 (applyGate3 dipoleToffoli pos hpos s) = openDipole L rho2 s :=
+  ⟨fracton_open_chain_Q_conservation dipoleToffoli rho2 dipoleToffoli_satisfies_laplacian pos hpos s,
+   fracton_open_chain_D_conservation dipoleToffoli rho2 dipoleToffoli_satisfies_laplacian pos hpos s⟩
+
+theorem dipoleToffoli_single_charge_frozen {L : Nat} (pos : Nat) (hpos : pos + 2 < L)
+    (s : Fin L → BitVec 2) (hQ : openCharge L rho2 s ≤ 1) :
+    applyGate3 dipoleToffoli pos hpos s = s :=
+  fracton_single_charge_frozen dipoleToffoli dipoleToffoli_satisfies_laplacian pos hpos s hQ
+
+theorem dipoleToffoli_implements_ccx (ca cc tgt : Bool) :
+    decodeDipoleTarget (dipoleToffoli (encodeDipoleLogical ca cc tgt)) =
+      xor tgt (ca && cc) := by
+  revert ca cc tgt
+  decide
+
+theorem encodeDipoleLogical_injective (c1 c2 t1 c3 c4 t2 : Bool)
+    (h : encodeDipoleLogical c1 c2 t1 = encodeDipoleLogical c3 c4 t2) :
+    c1 = c3 ∧ c2 = c4 ∧ t1 = t2 := by
+  revert c1 c2 t1 c3 c4 t2 h
+  decide
+
 end Phy.Noether

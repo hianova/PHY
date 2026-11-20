@@ -1,6 +1,5 @@
 import Flow.Schema
 import Flow.Morphism
-import Phy.Noether
 
 namespace Phy
 
@@ -215,6 +214,92 @@ def tetra4MetaLayout : CellLayout64 :=
     , ("pad64", .u64, 4)
     ]
 
+def ame4NogoMetaLayout : CellLayout64 :=
+  CellLayout64.packed64 "PhyAme4NogoMetaCell" "phy_ame4_nogo_meta_t" "ame4_nogo"
+    [ ("sample_lut", .u64, 1)
+    , ("merkle", .u64, 1)
+    , ("latin4_count", .u32, 1)
+    , ("total_ols", .u32, 1)
+    , ("affine_ols", .u32, 1)
+    , ("nonlin_ols", .u32, 1)
+    , ("bernoulli_ols", .u32, 1)
+    , ("pad32", .u32, 1)
+    , ("pad64", .u64, 3)
+    ]
+
+def simplex4MetaLayout : CellLayout64 :=
+  CellLayout64.packed64 "PhySimplex4MetaCell" "phy_simplex4_meta_t" "simplex4_meta"
+    [ ("merkle", .u64, 1)
+    , ("flags", .u32, 1)
+    , ("viol4", .u32, 1)
+    , ("order4", .u32, 1)
+    , ("viol2_ccx", .u16, 1)
+    , ("viol2_cccx", .u16, 1)
+    , ("anf_deg", .u8, 1)
+    , ("is_bijective", .u8, 1)
+    , ("is_involutive", .u8, 1)
+    , ("is_4coupled", .u8, 1)
+    , ("pad32", .u32, 1)
+    , ("pad64", .u64, 4)
+    ]
+
+def chiral6MetaLayout : CellLayout64 :=
+  CellLayout64.packed64 "PhyChiral6MetaCell" "phy_chiral6_meta_t" "chiral6_meta"
+    [ ("merkle", .u64, 1)
+    , ("flags", .u32, 1)
+    , ("cocycle_rank", .u16, 1)
+    , ("unknot_w0", .u16, 1)
+    , ("hopf_w0", .u16, 1)
+    , ("hopf_w2", .u16, 1)
+    , ("tref_l_w1", .u16, 1)
+    , ("tref_r_w3", .u16, 1)
+    , ("fig8_w0", .u16, 1)
+    , ("is_chiral", .u8, 1)
+    , ("is_non_coboundary", .u8, 1)
+    , ("pad32", .u32, 1)
+    , ("pad64", .u64, 4)
+    ]
+
+def qscarMetaLayout : CellLayout64 :=
+  CellLayout64.packed64 "PhyQscarMetaCell" "phy_qscar_meta_t" "qscar_meta"
+    [ ("merkle", .u64, 1)
+    , ("du_purity_t2_num", .u64, 1)
+    , ("du_purity_t2_den", .u64, 1)
+    , ("therm_purity_t4_num", .u64, 1)
+    , ("therm_purity_t4_den", .u64, 1)
+    , ("flags", .u32, 1)
+    , ("scar_period", .u16, 1)
+    , ("therm_max_sup", .u16, 1)
+    , ("du_unitary", .u8, 1)
+    , ("du_dual", .u8, 1)
+    , ("du_full_sup", .u8, 1)
+    , ("pad8", .u8, 5)
+    , ("pad64", .u64, 1)
+    ]
+
+def fracCompMetaLayout : CellLayout64 :=
+  CellLayout64.packed64 "PhyFracCompMetaCell" "phy_frac_comp_meta_t" "frac_comp_meta"
+    [ ("merkle", .u64, 1)
+    , ("flags", .u32, 1)
+    , ("sec6", .u16, 1)
+    , ("sec7", .u16, 1)
+    , ("sec8", .u16, 1)
+    , ("comp6", .u16, 1)
+    , ("comp7", .u16, 1)
+    , ("comp8", .u16, 1)
+    , ("largest6", .u16, 1)
+    , ("largest7", .u16, 1)
+    , ("largest8", .u16, 1)
+    , ("frozen6", .u16, 1)
+    , ("frozen7", .u16, 1)
+    , ("frozen8", .u16, 1)
+    , ("ccx_ok", .u8, 1)
+    , ("laplacian_ok", .u8, 1)
+    , ("is_involutive", .u8, 1)
+    , ("scaling_strict", .u8, 1)
+    , ("pad64", .u64, 3)
+    ]
+
 def phyArenaSchema : ArenaSpec :=
   { cPrefix := "PHY"
   , headerGuard := "PHY_SCHEMA_ABI_H"
@@ -342,12 +427,47 @@ def phyArenaSchema : ArenaSpec :=
       , cCountMacro := "PHY_COUNT_V3_RULES6"
       , mapDecl := "phy_yb8_rule_t v3_rules6[16];"
       }
-    , { name := "v3_aux"
+    , { name := "ame4_nogo"
       , baseSlot := 424
-      , count := 88
-      , cSlotMacro := "PHY_SLOT_V3_AUX"
-      , cCountMacro := "PHY_COUNT_V3_AUX"
-      , mapDecl := "phy_aux_cell_t v3_aux[88];"
+      , count := 1
+      , cSlotMacro := "PHY_SLOT_AME4_NOGO"
+      , cCountMacro := "PHY_COUNT_AME4_NOGO"
+      , mapDecl := "phy_ame4_nogo_meta_t ame4_nogo;"
+      }
+    , { name := "simplex4_meta"
+      , baseSlot := 425
+      , count := 8
+      , cSlotMacro := "PHY_SLOT_SIMPLEX4_META"
+      , cCountMacro := "PHY_COUNT_SIMPLEX4_META"
+      , mapDecl := "phy_simplex4_meta_t simplex4_meta[8];"
+      }
+    , { name := "chiral6_meta"
+      , baseSlot := 433
+      , count := 4
+      , cSlotMacro := "PHY_SLOT_CHIRAL6_META"
+      , cCountMacro := "PHY_COUNT_CHIRAL6_META"
+      , mapDecl := "phy_chiral6_meta_t chiral6_meta[4];"
+      }
+    , { name := "qscar_meta"
+      , baseSlot := 437
+      , count := 4
+      , cSlotMacro := "PHY_SLOT_QSCAR_META"
+      , cCountMacro := "PHY_COUNT_QSCAR_META"
+      , mapDecl := "phy_qscar_meta_t qscar_meta[4];"
+      }
+    , { name := "frac_comp_meta"
+      , baseSlot := 441
+      , count := 4
+      , cSlotMacro := "PHY_SLOT_FRAC_COMP_META"
+      , cCountMacro := "PHY_COUNT_FRAC_COMP_META"
+      , mapDecl := "phy_frac_comp_meta_t frac_comp_meta[4];"
+      }
+    , { name := "v4_aux"
+      , baseSlot := 445
+      , count := 67
+      , cSlotMacro := "PHY_SLOT_V4_AUX"
+      , cCountMacro := "PHY_COUNT_V4_AUX"
+      , mapDecl := "phy_aux_cell_t v4_aux[67];"
       }
     ]
   , layouts :=
@@ -367,6 +487,11 @@ def phyArenaSchema : ArenaSpec :=
     , fractonMetaLayout
     , biquandle8MetaLayout
     , tetra4MetaLayout
+    , ame4NogoMetaLayout
+    , simplex4MetaLayout
+    , chiral6MetaLayout
+    , qscarMetaLayout
+    , fracCompMetaLayout
     ]
   }
 

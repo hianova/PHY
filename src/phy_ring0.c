@@ -4276,3 +4276,1576 @@ uint32_t phy_hunt_tetra4(phy_arena_u *arena, uint64_t seed, uint64_t max_trials,
     }
     return found;
 }
+
+/* --- PHY v4.0: Exact Rigidity, 3+1D 4-Simplex, Chiral Cohomology, Z[i] Scar, Fracton Univ --- */
+
+static uint32_t phy_ctz_u64(uint64_t x) {
+    if (x == UINT64_C(0)) {
+        return UINT32_C(64);
+    }
+    uint32_t tz = UINT32_C(0);
+    while (((x >> tz) & UINT64_C(1)) == UINT64_C(0) && tz < UINT32_C(63)) {
+        ++tz;
+    }
+    return tz;
+}
+
+static uint8_t phy_anf_degree8(const uint8_t s[256]) {
+    uint8_t max_d = 0U;
+    uint8_t f[256];
+    for (uint32_t bit = 0U; bit < 8U; ++bit) {
+        for (uint32_t x = 0U; x < 256U; ++x) {
+            f[x] = (uint8_t)(((uint32_t)s[x] >> bit) & UINT32_C(1));
+        }
+        for (uint32_t v = 0U; v < 8U; ++v) {
+            for (uint32_t mask = 0U; mask < 256U; ++mask) {
+                if ((mask & (UINT32_C(1) << v)) != UINT32_C(0)) {
+                    f[mask] = (uint8_t)((uint32_t)f[mask] ^ (uint32_t)f[mask ^ (UINT32_C(1) << v)]);
+                }
+            }
+        }
+        for (uint32_t mask = 0U; mask < 256U; ++mask) {
+            if (f[mask] != 0U) {
+                uint8_t d = 0U;
+                uint32_t m = mask;
+                while (m != UINT32_C(0)) {
+                    d += (uint8_t)(m & UINT32_C(1));
+                    m >>= UINT32_C(1);
+                }
+                if (d > max_d) {
+                    max_d = d;
+                }
+            }
+        }
+    }
+    return max_d;
+}
+
+static uint32_t phy_perm256_order(const uint8_t s[256]) {
+    uint8_t vis[256];
+    phy_vzero_u8(vis, 256U);
+    uint64_t order = UINT64_C(1);
+    for (uint32_t i = 0U; i < 256U; ++i) {
+        if (vis[i] != 0U) {
+            continue;
+        }
+        uint64_t clen = UINT64_C(0);
+        uint32_t cur = i;
+        while (vis[cur] == 0U && clen < UINT64_C(256)) {
+            vis[cur] = 1U;
+            cur = s[cur];
+            ++clen;
+        }
+        uint64_t g = phy_stein_gcd64(order, clen);
+        uint64_t q = phy_div_u64(order, (g == UINT64_C(0)) ? UINT64_C(1) : g, NULL);
+        order = q * clen;
+    }
+    return (uint32_t)order;
+}
+
+bool phy_is_2unitary4(const uint8_t p[16]) {
+    if (p == NULL) {
+        return false;
+    }
+    uint32_t seen = UINT32_C(0);
+    for (uint32_t i = 0U; i < 16U; ++i) {
+        uint32_t v = (uint32_t)p[i] & UINT32_C(0xF);
+        seen |= (UINT32_C(1) << v);
+    }
+    if (seen != UINT32_C(0xFFFF)) {
+        return false;
+    }
+    for (uint32_t a = 0U; a < 4U; ++a) {
+        uint32_t rc_m = UINT32_C(0);
+        uint32_t rd_m = UINT32_C(0);
+        uint32_t cc_m = UINT32_C(0);
+        uint32_t cd_m = UINT32_C(0);
+        for (uint32_t b = 0U; b < 4U; ++b) {
+            uint32_t rv = (uint32_t)p[(a << 2U) | b] & UINT32_C(0xF);
+            uint32_t cv = (uint32_t)p[(b << 2U) | a] & UINT32_C(0xF);
+            rc_m |= (UINT32_C(1) << ((rv >> 2U) & UINT32_C(3)));
+            rd_m |= (UINT32_C(1) << (rv & UINT32_C(3)));
+            cc_m |= (UINT32_C(1) << ((cv >> 2U) & UINT32_C(3)));
+            cd_m |= (UINT32_C(1) << (cv & UINT32_C(3)));
+        }
+        if (rc_m != UINT32_C(0xF) || rd_m != UINT32_C(0xF) || cc_m != UINT32_C(0xF) ||
+            cd_m != UINT32_C(0xF)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void phy_classify_ame4(phy_arena_u *arena, phy_ame4_nogo_t *out) {
+    if (out == NULL) {
+        return;
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+
+    uint32_t ls[576];
+    uint32_t ls_cnt = UINT32_C(0);
+    uint8_t grid[16];
+    uint8_t row_m[4];
+    uint8_t col_m[4];
+    int32_t next_v[16];
+    phy_vzero_u8(grid, 16U);
+    phy_vzero_u8(row_m, 4U);
+    phy_vzero_u8(col_m, 4U);
+    for (uint32_t i = 0U; i < 16U; ++i) {
+        next_v[i] = 0;
+    }
+
+    int32_t pos = 0;
+    while (pos >= 0) {
+        if (pos == 16) {
+            if (ls_cnt < UINT32_C(576)) {
+                uint32_t packed = UINT32_C(0);
+                for (uint32_t i = 0U; i < 16U; ++i) {
+                    packed |= ((uint32_t)grid[i] & UINT32_C(3)) << (i * UINT32_C(2));
+                }
+                ls[ls_cnt++] = packed;
+            }
+            --pos;
+            uint32_t rp = (uint32_t)pos >> 2U;
+            uint32_t cp = (uint32_t)pos & UINT32_C(3);
+            uint32_t bit = UINT32_C(1) << ((uint32_t)grid[pos] & UINT32_C(3));
+            row_m[rp] = (uint8_t)((uint32_t)row_m[rp] ^ bit);
+            col_m[cp] = (uint8_t)((uint32_t)col_m[cp] ^ bit);
+            continue;
+        }
+
+        uint32_t r = (uint32_t)pos >> 2U;
+        uint32_t c = (uint32_t)pos & UINT32_C(3);
+        uint32_t used = (uint32_t)row_m[r] | (uint32_t)col_m[c];
+        int32_t v = next_v[pos];
+        while (v < 4 && (used & (UINT32_C(1) << (uint32_t)v)) != UINT32_C(0)) {
+            ++v;
+        }
+        if (v < 4) {
+            grid[pos] = (uint8_t)v;
+            uint32_t bit = UINT32_C(1) << (uint32_t)v;
+            row_m[r] = (uint8_t)((uint32_t)row_m[r] | bit);
+            col_m[c] = (uint8_t)((uint32_t)col_m[c] | bit);
+            next_v[pos] = v + 1;
+            ++pos;
+            if (pos < 16) {
+                next_v[pos] = 0;
+            }
+        } else {
+            next_v[pos] = 0;
+            --pos;
+            if (pos >= 0) {
+                uint32_t rp = (uint32_t)pos >> 2U;
+                uint32_t cp = (uint32_t)pos & UINT32_C(3);
+                uint32_t bit = UINT32_C(1) << ((uint32_t)grid[pos] & UINT32_C(3));
+                row_m[rp] = (uint8_t)((uint32_t)row_m[rp] ^ bit);
+                col_m[cp] = (uint8_t)((uint32_t)col_m[cp] ^ bit);
+            }
+        }
+    }
+    out->latin4_count = ls_cnt;
+
+    uint32_t total_ols = UINT32_C(0);
+    uint32_t affine_ols = UINT32_C(0);
+    uint32_t nonlin_ols = UINT32_C(0);
+    uint32_t bern_ols = UINT32_C(0);
+    bool have_sample = false;
+
+    for (uint32_t i = 0U; i < ls_cnt; ++i) {
+        uint32_t ci = ls[i];
+        for (uint32_t j = 0U; j < ls_cnt; ++j) {
+            uint32_t dj = ls[j];
+            uint32_t seen_mask = UINT32_C(0);
+            uint8_t p[16];
+            for (uint32_t k = 0U; k < 16U; ++k) {
+                uint32_t ck = (ci >> (k * UINT32_C(2))) & UINT32_C(3);
+                uint32_t dk = (dj >> (k * UINT32_C(2))) & UINT32_C(3);
+                uint32_t val = (ck << UINT32_C(2)) | dk;
+                p[k] = (uint8_t)val;
+                seen_mask |= (UINT32_C(1) << val);
+            }
+            if (seen_mask != UINT32_C(0xFFFF)) {
+                continue;
+            }
+            ++total_ols;
+            uint8_t deg = phy_anf_degree4(p, NULL, NULL, NULL);
+            if (deg == 1U) {
+                ++affine_ols;
+            } else {
+                ++nonlin_ols;
+            }
+            ++bern_ols;
+            if (!have_sample && p[0] == 0U && phy_is_2unitary4(p)) {
+                have_sample = true;
+                phy_vcopy_u8(out->sample_p, p, 16U);
+                out->sample_lut = phy_pack_lut(p);
+            }
+        }
+    }
+
+    out->total_ols = total_ols;
+    out->affine_ols = affine_ols;
+    out->nonlin_ols = nonlin_ols;
+    out->bernoulli_ols = bern_ols;
+
+    uint64_t mh = UINT64_C(0xCBF29CE484222325);
+    mh = phy_fnv1a64_u64(mh, out->sample_lut);
+    mh = phy_fnv1a64_u64(mh, ((uint64_t)total_ols << 32U) | (uint64_t)affine_ols);
+    out->merkle = mh;
+
+    if (arena != NULL) {
+        phy_vzero_u64(arena->cells[PHY_SLOT_AME4_NOGO].u64, 8U);
+        arena->map.ame4_nogo.sample_lut = out->sample_lut;
+        arena->map.ame4_nogo.merkle = out->merkle;
+        arena->map.ame4_nogo.latin4_count = out->latin4_count;
+        arena->map.ame4_nogo.total_ols = out->total_ols;
+        arena->map.ame4_nogo.affine_ols = out->affine_ols;
+        arena->map.ame4_nogo.nonlin_ols = out->nonlin_ols;
+        arena->map.ame4_nogo.bernoulli_ols = out->bernoulli_ols;
+    }
+}
+
+static uint16_t phy_simplex4_apply2(const uint8_t s[16], uint16_t st, uint32_t i, uint32_t j,
+                                    uint32_t k, uint32_t l) {
+    uint32_t si = UINT32_C(9) - i;
+    uint32_t sj = UINT32_C(9) - j;
+    uint32_t sk = UINT32_C(9) - k;
+    uint32_t sl = UINT32_C(9) - l;
+    uint32_t ust = (uint32_t)st;
+    uint32_t u = (((ust >> si) & UINT32_C(1)) << UINT32_C(3)) |
+                 (((ust >> sj) & UINT32_C(1)) << UINT32_C(2)) |
+                 (((ust >> sk) & UINT32_C(1)) << UINT32_C(1)) | ((ust >> sl) & UINT32_C(1));
+    uint32_t o = (uint32_t)s[u] & UINT32_C(0xF);
+    uint32_t clr =
+        ~((UINT32_C(1) << si) | (UINT32_C(1) << sj) | (UINT32_C(1) << sk) | (UINT32_C(1) << sl)) &
+        UINT32_C(0x3FF);
+    return (uint16_t)((ust & clr) | (((o >> 3U) & UINT32_C(1)) << si) |
+                      (((o >> 2U) & UINT32_C(1)) << sj) | (((o >> 1U) & UINT32_C(1)) << sk) |
+                      ((o & UINT32_C(1)) << sl));
+}
+
+uint16_t phy_simplex4_check2(const uint8_t s[16], uint16_t *out_first_bad) {
+    if (s == NULL) {
+        return UINT16_C(0xFFFF);
+    }
+    uint16_t viol = UINT16_C(0);
+    bool got = false;
+    for (uint16_t st = UINT16_C(0); st < UINT16_C(1024); ++st) {
+        uint16_t l = st;
+        l = phy_simplex4_apply2(s, l, 6U, 7U, 8U, 9U);
+        l = phy_simplex4_apply2(s, l, 3U, 4U, 5U, 9U);
+        l = phy_simplex4_apply2(s, l, 1U, 2U, 5U, 8U);
+        l = phy_simplex4_apply2(s, l, 0U, 2U, 4U, 7U);
+        l = phy_simplex4_apply2(s, l, 0U, 1U, 3U, 6U);
+
+        uint16_t r = st;
+        r = phy_simplex4_apply2(s, r, 0U, 1U, 3U, 6U);
+        r = phy_simplex4_apply2(s, r, 0U, 2U, 4U, 7U);
+        r = phy_simplex4_apply2(s, r, 1U, 2U, 5U, 8U);
+        r = phy_simplex4_apply2(s, r, 3U, 4U, 5U, 9U);
+        r = phy_simplex4_apply2(s, r, 6U, 7U, 8U, 9U);
+        if (l != r) {
+            if (!got && out_first_bad != NULL) {
+                got = true;
+                *out_first_bad = st;
+            }
+            ++viol;
+        }
+    }
+    return viol;
+}
+
+void phy_analyze_simplex4_2(phy_simplex4_2_t *out) {
+    if (out == NULL) {
+        return;
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+    for (uint8_t u = 0U; u < 16U; ++u) {
+        uint32_t a = ((uint32_t)u >> 3U) & UINT32_C(1);
+        uint32_t b = ((uint32_t)u >> 2U) & UINT32_C(1);
+        uint32_t c = ((uint32_t)u >> 1U) & UINT32_C(1);
+        uint32_t d = (uint32_t)u & UINT32_C(1);
+        out->ccx02[u] = (uint8_t)((uint32_t)u ^ ((a & c) << 2U));
+        out->ccx13[u] = (uint8_t)((uint32_t)u ^ ((b & d) << 1U));
+        out->cccx1[u] = (uint8_t)((uint32_t)u ^ ((a & c & d) << 2U));
+    }
+    out->viol2_ccx02 = phy_simplex4_check2(out->ccx02, NULL);
+    out->viol2_ccx13 = phy_simplex4_check2(out->ccx13, NULL);
+    out->viol2_cccx1 = phy_simplex4_check2(out->cccx1, &out->cccx1_wit_s);
+
+    uint8_t nl = 0U;
+    for (uint32_t mask_b = 0U; mask_b < 256U; ++mask_b) {
+        uint8_t s1[16];
+        for (uint32_t u = 0U; u < 16U; ++u) {
+            uint32_t idx = (((u >> 3U) & UINT32_C(1)) << 2U) | (((u >> 1U) & UINT32_C(1)) << 1U) |
+                           (u & UINT32_C(1));
+            s1[u] = (uint8_t)(u ^ (((mask_b >> idx) & UINT32_C(1)) << 2U));
+        }
+        if (phy_anf_degree4(s1, NULL, NULL, NULL) >= 2U && phy_simplex4_check2(s1, NULL) == 0U) {
+            ++nl;
+        }
+    }
+    out->nl_count_b_ctrl = nl;
+}
+
+static uint32_t phy_simplex4_apply4(const uint8_t s[256], uint32_t st, uint32_t i, uint32_t j,
+                                    uint32_t k, uint32_t l) {
+    uint32_t si = UINT32_C(2) * (UINT32_C(9) - i);
+    uint32_t sj = UINT32_C(2) * (UINT32_C(9) - j);
+    uint32_t sk = UINT32_C(2) * (UINT32_C(9) - k);
+    uint32_t sl = UINT32_C(2) * (UINT32_C(9) - l);
+    uint32_t u = (((st >> si) & UINT32_C(3)) << 6U) | (((st >> sj) & UINT32_C(3)) << 4U) |
+                 (((st >> sk) & UINT32_C(3)) << 2U) | ((st >> sl) & UINT32_C(3));
+    uint32_t o = (uint32_t)s[u];
+    uint32_t clr =
+        ~((UINT32_C(3) << si) | (UINT32_C(3) << sj) | (UINT32_C(3) << sk) | (UINT32_C(3) << sl)) &
+        UINT32_C(0xFFFFF);
+    return (st & clr) | (((o >> 6U) & UINT32_C(3)) << si) | (((o >> 4U) & UINT32_C(3)) << sj) |
+           (((o >> 2U) & UINT32_C(3)) << sk) | ((o & UINT32_C(3)) << sl);
+}
+
+uint32_t phy_simplex4_check4(const uint8_t s[256]) {
+    if (s == NULL) {
+        return UINT32_C(0xFFFFFFFF);
+    }
+    uint32_t viol = UINT32_C(0);
+    for (uint32_t st = UINT32_C(0); st < UINT32_C(1048576); ++st) {
+        uint32_t l = st;
+        l = phy_simplex4_apply4(s, l, 6U, 7U, 8U, 9U);
+        l = phy_simplex4_apply4(s, l, 3U, 4U, 5U, 9U);
+        l = phy_simplex4_apply4(s, l, 1U, 2U, 5U, 8U);
+        l = phy_simplex4_apply4(s, l, 0U, 2U, 4U, 7U);
+        l = phy_simplex4_apply4(s, l, 0U, 1U, 3U, 6U);
+
+        uint32_t r = st;
+        r = phy_simplex4_apply4(s, r, 0U, 1U, 3U, 6U);
+        r = phy_simplex4_apply4(s, r, 0U, 2U, 4U, 7U);
+        r = phy_simplex4_apply4(s, r, 1U, 2U, 5U, 8U);
+        r = phy_simplex4_apply4(s, r, 3U, 4U, 5U, 9U);
+        r = phy_simplex4_apply4(s, r, 6U, 7U, 8U, 9U);
+        if (l != r) {
+            ++viol;
+        }
+    }
+    return viol;
+}
+
+static uint8_t phy_check_4ch_coupled4(const uint8_t s[256]) {
+    bool c0 = false;
+    bool c1 = false;
+    bool c2 = false;
+    bool c3 = false;
+    for (uint32_t a = 0U; a < 4U; ++a) {
+        for (uint32_t b = 0U; b < 4U; ++b) {
+            for (uint32_t c = 0U; c < 4U; ++c) {
+                for (uint32_t d = 0U; d < 4U; ++d) {
+                    uint32_t base = (a << 6U) | (b << 4U) | (c << 2U) | d;
+                    uint32_t o = s[base];
+                    if (a > 0U) {
+                        uint32_t o0 = s[(b << 4U) | (c << 2U) | d];
+                        if (((o >> 4U) & 3U) != ((o0 >> 4U) & 3U)) {
+                            c0 = true;
+                        }
+                    }
+                    if (b > 0U) {
+                        uint32_t o0 = s[(a << 6U) | (c << 2U) | d];
+                        if (((o >> 2U) & 3U) != ((o0 >> 2U) & 3U)) {
+                            c1 = true;
+                        }
+                    }
+                    if (c > 0U) {
+                        uint32_t o0 = s[(a << 6U) | (b << 4U) | d];
+                        if (((o >> 4U) & 3U) != ((o0 >> 4U) & 3U)) {
+                            c2 = true;
+                        }
+                    }
+                    if (d > 0U) {
+                        uint32_t o0 = s[(a << 6U) | (b << 4U) | (c << 2U)];
+                        if (((o >> 2U) & 3U) != ((o0 >> 2U) & 3U)) {
+                            c3 = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return (c0 && c1 && c2 && c3) ? UINT8_C(1) : UINT8_C(0);
+}
+
+void phy_analyze_simplex4_4(const uint8_t s[256], phy_simplex4_4_t *out) {
+    if (s == NULL || out == NULL) {
+        return;
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+    uint64_t seen[4];
+    phy_vzero_u64(seen, 4U);
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        uint8_t v = s[u];
+        out->s[u] = v;
+        out->sinv[v] = (uint8_t)u;
+        seen[(uint32_t)v >> 6U] |= (UINT64_C(1) << ((uint32_t)v & UINT32_C(63)));
+    }
+    out->is_bijective =
+        (seen[0] == UINT64_C(0xFFFFFFFFFFFFFFFF) && seen[1] == UINT64_C(0xFFFFFFFFFFFFFFFF) &&
+         seen[2] == UINT64_C(0xFFFFFFFFFFFFFFFF) && seen[3] == UINT64_C(0xFFFFFFFFFFFFFFFF))
+            ? UINT8_C(1)
+            : UINT8_C(0);
+    out->viol4 = phy_simplex4_check4(out->s);
+    out->anf_deg = phy_anf_degree8(out->s);
+    out->order4 = (out->is_bijective != 0U) ? phy_perm256_order(out->s) : UINT32_C(0);
+
+    out->is_involutive = 1U;
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        if (out->s[out->s[u]] != u) {
+            out->is_involutive = 0U;
+            out->noninvol_u = (uint8_t)u;
+            break;
+        }
+    }
+
+    for (uint32_t a = 0U; a < 4U; ++a) {
+        for (uint32_t b = 0U; b < 4U; ++b) {
+            for (uint32_t c = 0U; c < 4U; ++c) {
+                for (uint32_t d = 0U; d < 4U; ++d) {
+                    uint32_t nb = b ^ (a & c & UINT32_C(1));
+                    uint32_t nc = c ^ (b & d & UINT32_C(2));
+                    out->s_coupled[(a << 6U) | (b << 4U) | (c << 2U) | d] =
+                        (uint8_t)((a << 6U) | (nb << 4U) | (nc << 2U) | d);
+                }
+            }
+        }
+    }
+    out->viol4_coupled = phy_simplex4_check4(out->s_coupled);
+    out->is_4coupled = phy_check_4ch_coupled4(out->s_coupled);
+
+    phy_simplex4_2_t s2;
+    phy_analyze_simplex4_2(&s2);
+    phy_vcopy_u8(out->ccx02, s2.ccx02, 16U);
+    out->viol2_ccx = s2.viol2_ccx02;
+    out->viol2_cccx = s2.viol2_cccx1;
+
+    uint32_t fl = UINT32_C(0);
+    if (out->is_bijective != 0U) {
+        fl |= PHY_S4_FLAG_BIJECTIVE;
+    }
+    if (out->viol4 == UINT32_C(0) && out->viol4_coupled == UINT32_C(0) && out->viol2_ccx == 0U &&
+        out->viol2_cccx > 0U) {
+        fl |= PHY_S4_FLAG_4SIMPLEX;
+    }
+    if (out->is_involutive == 0U) {
+        fl |= PHY_S4_FLAG_NONINVOL;
+    }
+    if (out->is_4coupled != 0U) {
+        fl |= PHY_S4_FLAG_4COUPLED;
+    }
+    if (out->anf_deg >= 3U) {
+        fl |= PHY_S4_FLAG_NONLINEAR;
+    }
+    out->flags = fl;
+
+    uint64_t mh = UINT64_C(0xCBF29CE484222325);
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        mh = phy_fnv1a64_u64(mh, ((uint64_t)out->s[u] << 8U) | (uint64_t)out->s_coupled[u]);
+    }
+    mh = phy_fnv1a64_u64(mh, ((uint64_t)fl << 32U) | (uint64_t)out->order4);
+    out->merkle = mh;
+}
+
+static void phy_store_arena_simplex4(phy_arena_u *arena, uint32_t idx, const phy_simplex4_4_t *s4) {
+    if (arena == NULL || idx >= PHY_COUNT_SIMPLEX4_META) {
+        return;
+    }
+    uint32_t slot = PHY_SLOT_SIMPLEX4_META + idx;
+    phy_vzero_u64(arena->cells[slot].u64, 8U);
+    arena->map.simplex4_meta[idx].merkle = s4->merkle;
+    arena->map.simplex4_meta[idx].flags = s4->flags;
+    arena->map.simplex4_meta[idx].viol4 = s4->viol4;
+    arena->map.simplex4_meta[idx].order4 = s4->order4;
+    arena->map.simplex4_meta[idx].viol2_ccx = s4->viol2_ccx;
+    arena->map.simplex4_meta[idx].viol2_cccx = s4->viol2_cccx;
+    arena->map.simplex4_meta[idx].anf_deg = s4->anf_deg;
+    arena->map.simplex4_meta[idx].is_bijective = s4->is_bijective;
+    arena->map.simplex4_meta[idx].is_involutive = s4->is_involutive;
+    arena->map.simplex4_meta[idx].is_4coupled = s4->is_4coupled;
+}
+
+uint32_t phy_hunt_simplex4(phy_arena_u *arena, uint64_t seed, uint64_t max_trials,
+                           phy_simplex4_4_t *out_best) {
+    if (out_best == NULL || max_trials == UINT64_C(0)) {
+        return UINT32_C(0);
+    }
+    uint64_t rng = (seed == UINT64_C(0)) ? UINT64_C(2026) : seed;
+    uint8_t s4p[24][4];
+    uint8_t fix0[6];
+    phy_gen_s4_perms(s4p, fix0);
+
+    uint64_t seen[PHY_COUNT_SIMPLEX4_META];
+    phy_vzero_u64(seen, PHY_COUNT_SIMPLEX4_META);
+    uint32_t found = UINT32_C(0);
+    bool have_best = false;
+    uint64_t best_sc = UINT64_C(0);
+
+    uint32_t req = PHY_S4_FLAG_BIJECTIVE | PHY_S4_FLAG_4SIMPLEX | PHY_S4_FLAG_NONINVOL |
+                   PHY_S4_FLAG_4COUPLED | PHY_S4_FLAG_NONLINEAR;
+
+    phy_simplex4_4_t cand;
+    for (uint64_t trial = 0U; trial < max_trials; ++trial) {
+        uint8_t p_id =
+            (trial == UINT64_C(0)) ? fix0[0] : fix0[searu_Bounded_u32(searu_rng_next(&rng), 6U)];
+        uint8_t k =
+            (trial == UINT64_C(0)) ? 1U : (uint8_t)(((searu_rng_next(&rng) & 1U) != 0U) ? 3U : 1U);
+        uint8_t pi[4];
+        uint8_t pi_inv[4];
+        for (uint8_t x = 0U; x < 4U; ++x) {
+            pi[x] = s4p[p_id][x];
+            pi_inv[pi[x]] = x;
+        }
+        uint8_t s[256];
+        for (uint32_t a = 0U; a < 4U; ++a) {
+            for (uint32_t b = 0U; b < 4U; ++b) {
+                for (uint32_t c = 0U; c < 4U; ++c) {
+                    for (uint32_t d = 0U; d < 4U; ++d) {
+                        uint32_t ob = ((uint32_t)pi[b] + (uint32_t)k * pi[a] * pi[c]) & UINT32_C(3);
+                        s[(a << 6U) | (b << 4U) | (c << 2U) | d] =
+                            (uint8_t)((a << 6U) | ((uint32_t)pi_inv[ob] << 4U) | (c << 2U) | d);
+                    }
+                }
+            }
+        }
+        phy_analyze_simplex4_4(s, &cand);
+        if ((cand.flags & req) == req && cand.s[0] == 0U) {
+            bool dup = false;
+            for (uint32_t i = 0U; i < found; ++i) {
+                if (seen[i] == cand.merkle) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (!dup && found < PHY_COUNT_SIMPLEX4_META) {
+                seen[found] = cand.merkle;
+                phy_store_arena_simplex4(arena, found, &cand);
+                ++found;
+            }
+            uint64_t clean_bonus = (trial == UINT64_C(0)) ? UINT64_C(1) : UINT64_C(0);
+            uint64_t sc =
+                (clean_bonus << 40U) | ((uint64_t)cand.anf_deg << 24U) | (uint64_t)cand.order4;
+            if (!have_best || sc > best_sc) {
+                have_best = true;
+                best_sc = sc;
+                phy_vcopy_u8((uint8_t *)out_best, (const uint8_t *)&cand, sizeof(cand));
+            }
+        }
+    }
+    if (have_best && arena != NULL) {
+        arena->map.img_hdr.active_rules = found;
+        arena->map.img_hdr.merkle_root = out_best->merkle;
+    }
+    return found;
+}
+
+uint16_t phy_verify_q6_cocycle(const uint8_t r[36], const uint8_t phi[36]) {
+    if (r == NULL || phi == NULL) {
+        return UINT16_C(0xFFFF);
+    }
+    uint8_t pa[36];
+    uint8_t pb[36];
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            uint32_t idx = (uint32_t)a * UINT32_C(6) + (uint32_t)b;
+            uint32_t rv = (uint32_t)r[idx];
+            if (rv >= UINT32_C(36)) {
+                return UINT16_C(0xFFFF);
+            }
+        }
+    }
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            uint32_t idx = (uint32_t)a * UINT32_C(6) + (uint32_t)b;
+            pa[idx] = a;
+            pb[idx] = b;
+        }
+    }
+    uint16_t viol = UINT16_C(0);
+    for (uint8_t x = 0U; x < 6U; ++x) {
+        if ((phi[(uint32_t)x * UINT32_C(6) + (uint32_t)x] & 3U) != 0U) {
+            ++viol;
+        }
+    }
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            uint32_t ab_i = (uint32_t)a * UINT32_C(6) + (uint32_t)b;
+            uint32_t ab = r[ab_i];
+            uint32_t a1 = pa[ab];
+            uint32_t b1 = pb[ab];
+            for (uint8_t c = 0U; c < 6U; ++c) {
+                uint32_t bc_i = b1 * UINT32_C(6) + (uint32_t)c;
+                uint32_t bc = r[bc_i];
+                uint32_t b2 = pa[bc];
+                uint32_t ab2_i = a1 * UINT32_C(6) + b2;
+
+                uint32_t bc0_i = (uint32_t)b * UINT32_C(6) + (uint32_t)c;
+                uint32_t bc0 = r[bc0_i];
+                uint32_t b0 = pa[bc0];
+                uint32_t c0 = pb[bc0];
+                uint32_t ab0_i = (uint32_t)a * UINT32_C(6) + b0;
+                uint32_t ab0 = r[ab0_i];
+                uint32_t b00 = pb[ab0];
+                uint32_t bc1_i = b00 * UINT32_C(6) + c0;
+
+                uint32_t lhs = ((uint32_t)phi[ab_i] + (uint32_t)phi[bc_i] + (uint32_t)phi[ab2_i]) &
+                               UINT32_C(3);
+                uint32_t rhs =
+                    ((uint32_t)phi[bc0_i] + (uint32_t)phi[ab0_i] + (uint32_t)phi[bc1_i]) &
+                    UINT32_C(3);
+                if (lhs != rhs) {
+                    ++viol;
+                }
+            }
+        }
+    }
+    return viol;
+}
+
+static void phy_q6_insert_z4_row(uint8_t piv[36][36], uint8_t has[36], uint8_t row[36]) {
+    for (uint32_t col = 0U; col < 36U; ++col) {
+        uint32_t rc = (uint32_t)row[col] & UINT32_C(3);
+        if (rc == UINT32_C(0)) {
+            continue;
+        }
+        if (has[col] == 0U) {
+            if ((rc & UINT32_C(1)) != UINT32_C(0)) {
+                for (uint32_t j = col; j < 36U; ++j) {
+                    piv[col][j] = (uint8_t)(((uint32_t)row[j] * rc) & UINT32_C(3));
+                }
+                has[col] = 1U;
+            } else {
+                for (uint32_t j = col; j < 36U; ++j) {
+                    piv[col][j] = (uint8_t)((uint32_t)row[j] & UINT32_C(3));
+                }
+                has[col] = 2U;
+            }
+            return;
+        }
+        if (has[col] == 1U) {
+            for (uint32_t j = col; j < 36U; ++j) {
+                uint32_t sub = (rc * (uint32_t)piv[col][j]) & UINT32_C(3);
+                row[j] = (uint8_t)(((uint32_t)row[j] + UINT32_C(4) - sub) & UINT32_C(3));
+            }
+        } else {
+            if ((rc & UINT32_C(1)) != UINT32_C(0)) {
+                uint8_t tmp[36];
+                for (uint32_t j = col; j < 36U; ++j) {
+                    tmp[j] = (uint8_t)(((uint32_t)row[j] * rc) & UINT32_C(3));
+                }
+                for (uint32_t j = col; j < 36U; ++j) {
+                    uint32_t sub = (UINT32_C(2) * (uint32_t)tmp[j]) & UINT32_C(3);
+                    row[j] = (uint8_t)(((uint32_t)piv[col][j] + UINT32_C(4) - sub) & UINT32_C(3));
+                    piv[col][j] = tmp[j];
+                }
+                has[col] = 1U;
+            } else {
+                for (uint32_t j = col; j < 36U; ++j) {
+                    row[j] = (uint8_t)(((uint32_t)row[j] + UINT32_C(4) - (uint32_t)piv[col][j]) &
+                                       UINT32_C(3));
+                }
+            }
+        }
+    }
+}
+
+static bool phy_q6_backsub_z4(const uint8_t piv[36][36], const uint8_t has[36], uint64_t *rng,
+                              uint8_t out_phi[36]) {
+    uint8_t vec[36];
+    phy_vzero_u8(vec, 36U);
+    for (int32_t col = 35; col >= 0; --col) {
+        if (has[col] == 0U) {
+            vec[col] = (uint8_t)(searu_rng_next(rng) & UINT64_C(3));
+        } else {
+            uint32_t sum = UINT32_C(0);
+            for (uint32_t j = (uint32_t)col + UINT32_C(1); j < 36U; ++j) {
+                sum += (uint32_t)piv[col][j] * (uint32_t)vec[j];
+            }
+            uint32_t rhs = (UINT32_C(4) - (sum & UINT32_C(3))) & UINT32_C(3);
+            if (has[col] == 1U) {
+                vec[col] = (uint8_t)rhs;
+            } else {
+                if ((rhs & UINT32_C(1)) != UINT32_C(0)) {
+                    return false;
+                }
+                uint32_t half = (rhs >> 1U) & UINT32_C(1);
+                uint32_t shift = ((searu_rng_next(rng) & UINT64_C(1)) != UINT64_C(0)) ? 2U : 0U;
+                vec[col] = (uint8_t)((half + shift) & UINT32_C(3));
+            }
+        }
+    }
+    phy_vcopy_u8(out_phi, vec, 36U);
+    return true;
+}
+
+static void phy_q6_eval_knots(const uint8_t r[36], const uint8_t rinv[36], const uint8_t phi[36],
+                              const uint8_t pa[36], const uint8_t pb[36],
+                              phy_chiral6_analysis_t *out) {
+    for (uint32_t w = 0U; w < 4U; ++w) {
+        out->unknot_w[w] = 0U;
+        out->hopf_w[w] = 0U;
+        out->tref_l_w[w] = 0U;
+        out->tref_r_w[w] = 0U;
+        out->fig8_w[w] = 0U;
+    }
+    for (uint32_t u = 0U; u < 36U; ++u) {
+        /* k = 1, 2, 3 positive braids */
+        uint32_t x = u;
+        uint32_t s = UINT32_C(0);
+        for (uint32_t step = 1U; step <= 3U; ++step) {
+            s = (s + (uint32_t)phi[x]) & UINT32_C(3);
+            x = r[x];
+            if (x == u) {
+                if (step == 1U) {
+                    out->unknot_w[s] += 1U;
+                } else if (step == 2U) {
+                    out->hopf_w[s] += 1U;
+                } else {
+                    out->tref_l_w[s] += 1U;
+                }
+            }
+        }
+        /* Negative braid T(2,-3) */
+        x = u;
+        s = UINT32_C(0);
+        for (uint32_t step = 0U; step < 3U; ++step) {
+            uint32_t y = rinv[x];
+            s = (s + (UINT32_C(4) - ((uint32_t)phi[y] & UINT32_C(3)))) & UINT32_C(3);
+            x = y;
+        }
+        if (x == u) {
+            out->tref_r_w[s] += 1U;
+        }
+    }
+
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            for (uint8_t c = 0U; c < 6U; ++c) {
+                uint32_t x = a;
+                uint32_t y = b;
+                uint32_t z = c;
+                uint32_t s = UINT32_C(0);
+                for (uint32_t rep = 0U; rep < 2U; ++rep) {
+                    uint32_t u1 = x * UINT32_C(6) + y;
+                    s = (s + (uint32_t)phi[u1]) & UINT32_C(3);
+                    uint32_t o1 = r[u1];
+                    x = pa[o1];
+                    y = pb[o1];
+
+                    uint32_t u2 = y * UINT32_C(6) + z;
+                    uint32_t o2 = rinv[u2];
+                    s = (s + (UINT32_C(4) - ((uint32_t)phi[o2] & UINT32_C(3)))) & UINT32_C(3);
+                    y = pa[o2];
+                    z = pb[o2];
+                }
+                if (x == (uint32_t)a && y == (uint32_t)b && z == (uint32_t)c) {
+                    out->fig8_w[s] += 1U;
+                }
+            }
+        }
+    }
+}
+
+void phy_analyze_chiral6_custom(const uint8_t act[6][6], const uint8_t phi_in[36],
+                                phy_chiral6_analysis_t *out) {
+    if (act == NULL || out == NULL) {
+        return;
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+    uint8_t pa[36];
+    uint8_t pb[36];
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            out->act[a][b] = act[a][b];
+            uint32_t idx = (uint32_t)a * UINT32_C(6) + (uint32_t)b;
+            pa[idx] = a;
+            pb[idx] = b;
+            uint8_t res = act[b][a];
+            if (res >= 6U) {
+                return;
+            }
+            uint32_t rv = (uint32_t)b * UINT32_C(6) + (uint32_t)res;
+            out->r[idx] = (uint8_t)rv;
+            out->rinv[rv] = (uint8_t)idx;
+        }
+    }
+
+    bool r1_ok = true;
+    for (uint8_t x = 0U; x < 6U; ++x) {
+        uint32_t d = (uint32_t)x * UINT32_C(6) + (uint32_t)x;
+        if (out->r[d] != d) {
+            r1_ok = false;
+        }
+    }
+    uint16_t yb_viol = 0U;
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            uint32_t ab = out->r[(uint32_t)a * UINT32_C(6) + (uint32_t)b];
+            uint32_t a1 = pa[ab];
+            uint32_t b1 = pb[ab];
+            for (uint8_t c = 0U; c < 6U; ++c) {
+                uint32_t bc = out->r[b1 * UINT32_C(6) + (uint32_t)c];
+                uint32_t b2 = pa[bc];
+                uint32_t c2 = pb[bc];
+                uint32_t ab2 = out->r[a1 * UINT32_C(6) + b2];
+
+                uint32_t bc0 = out->r[(uint32_t)b * UINT32_C(6) + (uint32_t)c];
+                uint32_t b0 = pa[bc0];
+                uint32_t c0 = pb[bc0];
+                uint32_t ab0 = out->r[(uint32_t)a * UINT32_C(6) + b0];
+                uint32_t a0 = pa[ab0];
+                uint32_t b00 = pb[ab0];
+                uint32_t bc1 = out->r[b00 * UINT32_C(6) + c0];
+                if (pa[ab2] != a0 || pb[ab2] != pa[bc1] || c2 != pb[bc1]) {
+                    ++yb_viol;
+                }
+            }
+        }
+    }
+
+    uint8_t piv[36][36];
+    uint8_t has[36];
+    phy_vzero_u8(&piv[0][0], sizeof(piv));
+    phy_vzero_u8(has, 36U);
+    uint8_t row[36];
+    for (uint8_t x = 0U; x < 6U; ++x) {
+        phy_vzero_u8(row, 36U);
+        row[(uint32_t)x * UINT32_C(6) + (uint32_t)x] = 1U;
+        phy_q6_insert_z4_row(piv, has, row);
+    }
+    for (uint8_t a = 0U; a < 6U; ++a) {
+        for (uint8_t b = 0U; b < 6U; ++b) {
+            uint32_t ab_i = (uint32_t)a * UINT32_C(6) + (uint32_t)b;
+            uint32_t ab = out->r[ab_i];
+            uint32_t a1 = pa[ab];
+            uint32_t b1 = pb[ab];
+            for (uint8_t c = 0U; c < 6U; ++c) {
+                uint32_t bc_i = b1 * UINT32_C(6) + (uint32_t)c;
+                uint32_t bc = out->r[bc_i];
+                uint32_t ab2_i = a1 * UINT32_C(6) + (uint32_t)pa[bc];
+                uint32_t bc0_i = (uint32_t)b * UINT32_C(6) + (uint32_t)c;
+                uint32_t bc0 = out->r[bc0_i];
+                uint32_t ab0_i = (uint32_t)a * UINT32_C(6) + (uint32_t)pa[bc0];
+                uint32_t bc1_i = (uint32_t)pb[out->r[ab0_i]] * UINT32_C(6) + (uint32_t)pb[bc0];
+
+                phy_vzero_u8(row, 36U);
+                row[ab_i] = (uint8_t)((row[ab_i] + 1U) & 3U);
+                row[bc_i] = (uint8_t)((row[bc_i] + 1U) & 3U);
+                row[ab2_i] = (uint8_t)((row[ab2_i] + 1U) & 3U);
+                row[bc0_i] = (uint8_t)((row[bc0_i] + 3U) & 3U);
+                row[ab0_i] = (uint8_t)((row[ab0_i] + 3U) & 3U);
+                row[bc1_i] = (uint8_t)((row[bc1_i] + 3U) & 3U);
+                phy_q6_insert_z4_row(piv, has, row);
+            }
+        }
+    }
+    uint16_t rk = 0U;
+    for (uint32_t c = 0U; c < 36U; ++c) {
+        if (has[c] != 0U) {
+            ++rk;
+        }
+    }
+    out->cocycle_rank = rk;
+
+    if (phi_in != NULL) {
+        for (uint32_t i = 0U; i < 36U; ++i) {
+            out->phi[i] = (uint8_t)(phi_in[i] & 3U);
+        }
+        out->cocycle_viol = phy_verify_q6_cocycle(out->r, out->phi);
+        phy_q6_eval_knots(out->r, out->rinv, out->phi, pa, pb, out);
+    } else {
+        uint64_t rng = UINT64_C(42);
+        uint8_t cand_phi[36];
+        for (uint32_t tr = 0U; tr < 128U; ++tr) {
+            if (!phy_q6_backsub_z4(piv, has, &rng, cand_phi)) {
+                continue;
+            }
+            if (phy_verify_q6_cocycle(out->r, cand_phi) != 0U) {
+                continue;
+            }
+            phy_q6_eval_knots(out->r, out->rinv, cand_phi, pa, pb, out);
+            bool diff = false;
+            for (uint32_t w = 0U; w < 4U; ++w) {
+                if (out->tref_l_w[w] != out->tref_r_w[w]) {
+                    diff = true;
+                }
+            }
+            if (diff) {
+                if (out->tref_l_w[3] > out->tref_l_w[1]) {
+                    for (uint32_t i = 0U; i < 36U; ++i) {
+                        cand_phi[i] =
+                            (uint8_t)((UINT32_C(4) - ((uint32_t)cand_phi[i] & UINT32_C(3))) &
+                                      UINT32_C(3));
+                    }
+                    phy_q6_eval_knots(out->r, out->rinv, cand_phi, pa, pb, out);
+                }
+                phy_vcopy_u8(out->phi, cand_phi, 36U);
+                out->cocycle_viol = 0U;
+                break;
+            }
+        }
+    }
+
+    bool chiral = false;
+    for (uint32_t w = 0U; w < 4U; ++w) {
+        if (out->tref_l_w[w] != out->tref_r_w[w]) {
+            chiral = true;
+        }
+    }
+    out->is_chiral = chiral ? UINT8_C(1) : UINT8_C(0);
+
+    bool non_cob = false;
+    for (uint32_t u = 0U; u < 36U && !non_cob; ++u) {
+        uint32_t x = u;
+        uint32_t s = UINT32_C(0);
+        for (uint32_t st = 0U; st < 3U; ++st) {
+            s = (s + (uint32_t)out->phi[x]) & UINT32_C(3);
+            x = out->r[x];
+        }
+        if (x == u && s != UINT32_C(0)) {
+            non_cob = true;
+            out->wit_a = pa[u];
+            out->wit_b = pb[u];
+        }
+    }
+    out->is_non_coboundary = (out->cocycle_viol == 0U && non_cob) ? UINT8_C(1) : UINT8_C(0);
+
+    uint32_t fl = UINT32_C(0);
+    if (yb_viol == 0U) {
+        fl |= PHY_CHIRAL6_FLAG_YBE;
+    }
+    if (r1_ok) {
+        fl |= PHY_CHIRAL6_FLAG_R1;
+    }
+    if (out->cocycle_viol == 0U) {
+        fl |= PHY_CHIRAL6_FLAG_COCYCLE;
+    }
+    if (out->is_chiral != 0U) {
+        fl |= PHY_CHIRAL6_FLAG_CHIRAL;
+    }
+    if (out->is_non_coboundary != 0U) {
+        fl |= PHY_CHIRAL6_FLAG_NONCOBOUND;
+    }
+    out->flags = fl;
+
+    uint64_t mh = UINT64_C(0xCBF29CE484222325);
+    for (uint32_t i = 0U; i < 36U; ++i) {
+        mh = phy_fnv1a64_u64(mh, ((uint64_t)out->r[i] << 8U) | (uint64_t)out->phi[i]);
+    }
+    mh = phy_fnv1a64_u64(mh, (uint64_t)fl);
+    out->merkle = mh;
+}
+
+uint32_t phy_solve_chiral6(phy_arena_u *arena, phy_chiral6_analysis_t *out) {
+    if (out == NULL) {
+        return UINT32_C(0);
+    }
+    static const uint8_t q6_act[6][6] = {
+        {0U, 1U, 3U, 4U, 5U, 2U}, {0U, 1U, 5U, 2U, 3U, 4U}, {5U, 3U, 2U, 0U, 4U, 1U},
+        {2U, 4U, 1U, 3U, 0U, 5U}, {3U, 5U, 2U, 1U, 4U, 0U}, {4U, 2U, 0U, 3U, 1U, 5U},
+    };
+    phy_analyze_chiral6_custom(q6_act, NULL, out);
+    uint32_t req = PHY_CHIRAL6_FLAG_YBE | PHY_CHIRAL6_FLAG_R1 | PHY_CHIRAL6_FLAG_COCYCLE |
+                   PHY_CHIRAL6_FLAG_CHIRAL | PHY_CHIRAL6_FLAG_NONCOBOUND;
+    if ((out->flags & req) != req) {
+        return UINT32_C(0);
+    }
+    if (arena != NULL) {
+        phy_vzero_u64(arena->cells[PHY_SLOT_CHIRAL6_META].u64, 8U);
+        arena->map.chiral6_meta[0].merkle = out->merkle;
+        arena->map.chiral6_meta[0].flags = out->flags;
+        arena->map.chiral6_meta[0].cocycle_rank = out->cocycle_rank;
+        arena->map.chiral6_meta[0].unknot_w0 = out->unknot_w[0];
+        arena->map.chiral6_meta[0].hopf_w0 = out->hopf_w[0];
+        arena->map.chiral6_meta[0].hopf_w2 = out->hopf_w[2];
+        arena->map.chiral6_meta[0].tref_l_w1 = out->tref_l_w[1];
+        arena->map.chiral6_meta[0].tref_r_w3 = out->tref_r_w[3];
+        arena->map.chiral6_meta[0].fig8_w0 = out->fig8_w[0];
+        arena->map.chiral6_meta[0].is_chiral = out->is_chiral;
+        arena->map.chiral6_meta[0].is_non_coboundary = out->is_non_coboundary;
+        arena->map.img_hdr.active_rules = UINT32_C(1);
+        arena->map.img_hdr.merkle_root = out->merkle;
+    }
+    return UINT32_C(1);
+}
+
+void phy_verify_zi_du4(const int8_t re[4][4], const int8_t im[4][4], uint8_t *out_unitary,
+                       uint8_t *out_dual, uint8_t *out_full_sup) {
+    if (re == NULL || im == NULL) {
+        return;
+    }
+    bool uni = true;
+    bool full = true;
+    for (uint32_t i = 0U; i < 4U; ++i) {
+        for (uint32_t j = 0U; j < 4U; ++j) {
+            if (re[i][j] == 0 && im[i][j] == 0) {
+                full = false;
+            }
+        }
+    }
+    for (uint32_t j = 0U; j < 4U && uni; ++j) {
+        for (uint32_t k = 0U; k < 4U && uni; ++k) {
+            int64_t sr = INT64_C(0);
+            int64_t si = INT64_C(0);
+            for (uint32_t i = 0U; i < 4U; ++i) {
+                int64_t ar = (int64_t)re[i][j];
+                int64_t ai = (int64_t)im[i][j];
+                int64_t br = (int64_t)re[i][k];
+                int64_t bi = (int64_t)im[i][k];
+                sr += ar * br + ai * bi;
+                si += ar * bi - ai * br;
+            }
+            int64_t exp_r = (j == k) ? INT64_C(4) : INT64_C(0);
+            if (sr != exp_r || si != INT64_C(0)) {
+                uni = false;
+            }
+        }
+    }
+    bool dual = true;
+    for (uint32_t b = 0U; b < 2U && dual; ++b) {
+        for (uint32_t d = 0U; d < 2U && dual; ++d) {
+            for (uint32_t b2 = 0U; b2 < 2U && dual; ++b2) {
+                for (uint32_t d2 = 0U; d2 < 2U && dual; ++d2) {
+                    uint32_t col1 = (b << 1U) | d;
+                    uint32_t col2 = (b2 << 1U) | d2;
+                    int64_t sr = INT64_C(0);
+                    int64_t si = INT64_C(0);
+                    for (uint32_t a = 0U; a < 2U; ++a) {
+                        for (uint32_t c = 0U; c < 2U; ++c) {
+                            uint32_t row1 = (c << 1U) | ((col1 & 1U));
+                            uint32_t row2 = (c << 1U) | ((col2 & 1U));
+                            uint32_t c1 = (a << 1U) | b;
+                            uint32_t c2 = (a << 1U) | b2;
+                            int64_t ar = (int64_t)re[row1][c1];
+                            int64_t ai = (int64_t)im[row1][c1];
+                            int64_t br = (int64_t)re[row2][c2];
+                            int64_t bi = (int64_t)im[row2][c2];
+                            sr += ar * br + ai * bi;
+                            si += ar * bi - ai * br;
+                        }
+                    }
+                    int64_t exp_r = (col1 == col2) ? INT64_C(4) : INT64_C(0);
+                    if (sr != exp_r || si != INT64_C(0)) {
+                        dual = false;
+                    }
+                }
+            }
+        }
+    }
+    if (out_unitary != NULL) {
+        *out_unitary = uni ? UINT8_C(1) : UINT8_C(0);
+    }
+    if (out_dual != NULL) {
+        *out_dual = dual ? UINT8_C(1) : UINT8_C(0);
+    }
+    if (out_full_sup != NULL) {
+        *out_full_sup = full ? UINT8_C(1) : UINT8_C(0);
+    }
+}
+
+static void phy_qscar_reduce_pow2(int64_t re[64], int64_t im[64]) {
+    uint64_t mask = UINT64_C(0);
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        mask |= phy_abs_i64(re[s]) | phy_abs_i64(im[s]);
+    }
+    if (mask == UINT64_C(0)) {
+        return;
+    }
+    uint32_t tz = phy_ctz_u64(mask);
+    if (tz > 0U && tz < 63U) {
+        for (uint32_t s = 0U; s < 64U; ++s) {
+            uint64_t rmag = phy_abs_i64(re[s]) >> tz;
+            uint64_t imag = phy_abs_i64(im[s]) >> tz;
+            re[s] = (re[s] < 0) ? -(int64_t)rmag : (int64_t)rmag;
+            im[s] = (im[s] < 0) ? -(int64_t)imag : (int64_t)imag;
+        }
+    }
+}
+
+static void phy_qscar_apply_2q(int64_t re[64], int64_t im[64], const int8_t w_re[4][4],
+                               const int8_t w_im[4][4], uint32_t q0, uint32_t q1) {
+    int64_t nre[64];
+    int64_t nim[64];
+    phy_vzero_i64(nre, 64U);
+    phy_vzero_i64(nim, 64U);
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        int64_t ar = re[s];
+        int64_t ai = im[s];
+        if (ar == 0 && ai == 0) {
+            continue;
+        }
+        uint32_t idx_in = (((s >> q0) & UINT32_C(1)) << 1U) | ((s >> q1) & UINT32_C(1));
+        uint32_t base = s & ~((UINT32_C(1) << q0) | (UINT32_C(1) << q1));
+        for (uint32_t o = 0U; o < 4U; ++o) {
+            int64_t wr = (int64_t)w_re[o][idx_in];
+            int64_t wi = (int64_t)w_im[o][idx_in];
+            uint32_t ns = base | (((o >> 1U) & UINT32_C(1)) << q0) | ((o & UINT32_C(1)) << q1);
+            nre[ns] += wr * ar - wi * ai;
+            nim[ns] += wr * ai + wi * ar;
+        }
+    }
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        re[s] = nre[s];
+        im[s] = nim[s];
+    }
+}
+
+static void phy_qscar_apply_scar4(int64_t re[64], int64_t im[64], const int8_t w_re[4][4],
+                                  const int8_t w_im[4][4], uint32_t q0, uint32_t q1, uint32_t q2,
+                                  uint32_t q3, bool inv_ctrl) {
+    int64_t nre[64];
+    int64_t nim[64];
+    phy_vzero_i64(nre, 64U);
+    phy_vzero_i64(nim, 64U);
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        int64_t ar = re[s];
+        int64_t ai = im[s];
+        if (ar == 0 && ai == 0) {
+            continue;
+        }
+        uint32_t b0 = (s >> q0) & UINT32_C(1);
+        uint32_t b3 = (s >> q3) & UINT32_C(1);
+        bool keep = inv_ctrl ? (b0 == b3) : (b0 != b3);
+        if (keep) {
+            nre[s] += INT64_C(2) * ar;
+            nim[s] += INT64_C(2) * ai;
+        } else {
+            uint32_t idx_in = (((s >> q1) & UINT32_C(1)) << 1U) | ((s >> q2) & UINT32_C(1));
+            uint32_t base = s & ~((UINT32_C(1) << q1) | (UINT32_C(1) << q2));
+            for (uint32_t o = 0U; o < 4U; ++o) {
+                int64_t wr = (int64_t)w_re[o][idx_in];
+                int64_t wi = (int64_t)w_im[o][idx_in];
+                uint32_t ns = base | (((o >> 1U) & UINT32_C(1)) << q1) | ((o & UINT32_C(1)) << q2);
+                nre[ns] += wr * ar - wi * ai;
+                nim[ns] += wr * ai + wi * ar;
+            }
+        }
+    }
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        re[s] = nre[s];
+        im[s] = nim[s];
+    }
+}
+
+static void phy_qscar_half_purity(const int64_t re[64], const int64_t im[64], uint32_t ref_s0,
+                                  uint64_t *out_pur_num, uint64_t *out_pur_den,
+                                  uint64_t *out_ret_num, uint64_t *out_ret_den, uint16_t *out_sup) {
+    uint64_t norm2 = UINT64_C(0);
+    uint16_t sup = 0U;
+    for (uint32_t s = 0U; s < 64U; ++s) {
+        if (re[s] != 0 || im[s] != 0) {
+            ++sup;
+        }
+        uint64_t r = phy_abs_i64(re[s]);
+        uint64_t i = phy_abs_i64(im[s]);
+        norm2 += r * r + i * i;
+    }
+    uint64_t r0 = phy_abs_i64(re[ref_s0]);
+    uint64_t i0 = phy_abs_i64(im[ref_s0]);
+    uint64_t ret_n = r0 * r0 + i0 * i0;
+    uint64_t ret_g = phy_stein_gcd64(ret_n, norm2);
+    if (out_ret_num != NULL) {
+        *out_ret_num = (ret_g == UINT64_C(0)) ? UINT64_C(0) : phy_div_u64(ret_n, ret_g, NULL);
+    }
+    if (out_ret_den != NULL) {
+        *out_ret_den = (ret_g == UINT64_C(0)) ? UINT64_C(1) : phy_div_u64(norm2, ret_g, NULL);
+    }
+    if (out_sup != NULL) {
+        *out_sup = sup;
+    }
+
+    uint64_t tr_rho2 = UINT64_C(0);
+    for (uint32_t a1 = 0U; a1 < 8U; ++a1) {
+        for (uint32_t a2 = 0U; a2 < 8U; ++a2) {
+            int64_t mr = INT64_C(0);
+            int64_t mi = INT64_C(0);
+            for (uint32_t b = 0U; b < 8U; ++b) {
+                uint32_t idx1 = (b << 3U) | a1;
+                uint32_t idx2 = (b << 3U) | a2;
+                mr += re[idx1] * re[idx2] + im[idx1] * im[idx2];
+                mi += im[idx1] * re[idx2] - re[idx1] * im[idx2];
+            }
+            tr_rho2 += phy_abs_i64(mr) * phy_abs_i64(mr) + phy_abs_i64(mi) * phy_abs_i64(mi);
+        }
+    }
+    uint64_t den = norm2 * norm2;
+    uint64_t g = phy_stein_gcd64(tr_rho2, den);
+    if (out_pur_num != NULL) {
+        *out_pur_num = (g == UINT64_C(0)) ? UINT64_C(0) : phy_div_u64(tr_rho2, g, NULL);
+    }
+    if (out_pur_den != NULL) {
+        *out_pur_den = (g == UINT64_C(0)) ? UINT64_C(1) : phy_div_u64(den, g, NULL);
+    }
+}
+
+uint32_t phy_analyze_qscar_custom(phy_arena_u *arena, const int8_t re[4][4], const int8_t im[4][4],
+                                  bool invert_scar_ctrl, phy_qscar_analysis_t *out) {
+    if (re == NULL || im == NULL || out == NULL) {
+        return UINT32_C(0);
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+    for (uint32_t i = 0U; i < 4U; ++i) {
+        for (uint32_t j = 0U; j < 4U; ++j) {
+            out->w_re[i][j] = re[i][j];
+            out->w_im[i][j] = im[i][j];
+        }
+    }
+    phy_verify_zi_du4(out->w_re, out->w_im, &out->du_unitary, &out->du_dual, &out->du_full_sup);
+    out->scar_unitary = out->du_unitary;
+
+    static const uint32_t bw_pairs[6][2] = {{0U, 1U}, {2U, 3U}, {4U, 5U},
+                                            {1U, 2U}, {3U, 4U}, {5U, 0U}};
+
+    /* 1. Dual-Unitary brick-wall on L=6 from |000000> */
+    int64_t st_r[64];
+    int64_t st_i[64];
+    phy_vzero_i64(st_r, 64U);
+    phy_vzero_i64(st_i, 64U);
+    st_r[0] = INT64_C(1);
+    for (uint32_t t = 0U; t < 4U; ++t) {
+        for (uint32_t k = 0U; k < 6U; ++k) {
+            phy_qscar_apply_2q(st_r, st_i, out->w_re, out->w_im, bw_pairs[k][0], bw_pairs[k][1]);
+        }
+        phy_qscar_reduce_pow2(st_r, st_i);
+        phy_qscar_half_purity(st_r, st_i, 0U, &out->du_purity_num[t], &out->du_purity_den[t], NULL,
+                              NULL, &out->du_sup[t]);
+    }
+
+    /* 2. Local Scar + X^{\otimes 6} Period-2 DTC on Neel |010101> (0x15) */
+    phy_vzero_i64(st_r, 64U);
+    phy_vzero_i64(st_i, 64U);
+    st_r[0x15] = INT64_C(1);
+    uint16_t scar_period = 0U;
+    for (uint32_t t = 0U; t < 4U; ++t) {
+        for (uint32_t i = 0U; i < 6U; ++i) {
+            phy_qscar_apply_scar4(st_r, st_i, out->w_re, out->w_im, i, (i + 1U) % 6U, (i + 2U) % 6U,
+                                  (i + 3U) % 6U, invert_scar_ctrl);
+        }
+        for (uint32_t s = 0U; s < 32U; ++s) {
+            uint32_t ms = s ^ UINT32_C(63);
+            int64_t tr = st_r[s];
+            int64_t ti = st_i[s];
+            st_r[s] = st_r[ms];
+            st_i[s] = st_i[ms];
+            st_r[ms] = tr;
+            st_i[ms] = ti;
+        }
+        phy_qscar_reduce_pow2(st_r, st_i);
+        phy_qscar_half_purity(st_r, st_i, 0x15U, NULL, NULL, &out->neel_ret_num[t],
+                              &out->neel_ret_den[t], &out->neel_sup[t]);
+        if (scar_period == 0U && out->neel_sup[t] == 1U && out->neel_ret_num[t] == UINT64_C(1) &&
+            out->neel_ret_den[t] == UINT64_C(1)) {
+            scar_period = (uint16_t)(t + 1U);
+        }
+    }
+    out->scar_period = scar_period;
+
+    /* 3. Single-defect thermal trajectory from |010111> (0x17) */
+    phy_vzero_i64(st_r, 64U);
+    phy_vzero_i64(st_i, 64U);
+    st_r[0x17] = INT64_C(1);
+    for (uint32_t t = 0U; t < 4U; ++t) {
+        for (uint32_t i = 0U; i < 6U; ++i) {
+            phy_qscar_apply_scar4(st_r, st_i, out->w_re, out->w_im, i, (i + 1U) % 6U, (i + 2U) % 6U,
+                                  (i + 3U) % 6U, invert_scar_ctrl);
+        }
+        for (uint32_t s = 0U; s < 32U; ++s) {
+            uint32_t ms = s ^ UINT32_C(63);
+            int64_t tr = st_r[s];
+            int64_t ti = st_i[s];
+            st_r[s] = st_r[ms];
+            st_i[s] = st_i[ms];
+            st_r[ms] = tr;
+            st_i[ms] = ti;
+        }
+        phy_qscar_reduce_pow2(st_r, st_i);
+        phy_qscar_half_purity(st_r, st_i, 0x17U, &out->therm_purity_num[t],
+                              &out->therm_purity_den[t], NULL, NULL, &out->therm_sup[t]);
+    }
+
+    uint32_t fl = UINT32_C(0);
+    if (out->du_unitary != 0U) {
+        fl |= PHY_QSCAR_FLAG_UNITARY;
+    }
+    if (out->du_dual != 0U) {
+        fl |= PHY_QSCAR_FLAG_DUAL;
+    }
+    if (out->du_full_sup != 0U) {
+        fl |= PHY_QSCAR_FLAG_FULL_SUP;
+    }
+    if (out->scar_period == 2U && out->neel_sup[0] == 1U && out->neel_ret_num[0] == UINT64_C(0) &&
+        out->neel_ret_num[1] == UINT64_C(1)) {
+        fl |= PHY_QSCAR_FLAG_DTC_P2;
+    }
+    if (out->therm_sup[3] >= 32U && out->therm_purity_den[3] > UINT64_C(0) &&
+        out->therm_purity_num[3] * UINT64_C(3) < out->therm_purity_den[3]) {
+        fl |= PHY_QSCAR_FLAG_THERMAL;
+    }
+    out->flags = fl;
+
+    uint64_t mh = UINT64_C(0xCBF29CE484222325);
+    mh = phy_fnv1a64_u64(mh, out->du_purity_num[1] ^ (out->du_purity_den[1] << 8U));
+    mh = phy_fnv1a64_u64(mh, out->therm_purity_num[3] ^ out->therm_purity_den[3]);
+    mh = phy_fnv1a64_u64(mh, (uint64_t)fl);
+    out->merkle = mh;
+
+    if (arena != NULL && !invert_scar_ctrl) {
+        phy_vzero_u64(arena->cells[PHY_SLOT_QSCAR_META].u64, 8U);
+        arena->map.qscar_meta[0].merkle = out->merkle;
+        arena->map.qscar_meta[0].du_purity_t2_num = out->du_purity_num[1];
+        arena->map.qscar_meta[0].du_purity_t2_den = out->du_purity_den[1];
+        arena->map.qscar_meta[0].therm_purity_t4_num = out->therm_purity_num[3];
+        arena->map.qscar_meta[0].therm_purity_t4_den = out->therm_purity_den[3];
+        arena->map.qscar_meta[0].flags = out->flags;
+        arena->map.qscar_meta[0].scar_period = out->scar_period;
+        arena->map.qscar_meta[0].therm_max_sup = out->therm_sup[3];
+        arena->map.qscar_meta[0].du_unitary = out->du_unitary;
+        arena->map.qscar_meta[0].du_dual = out->du_dual;
+        arena->map.qscar_meta[0].du_full_sup = out->du_full_sup;
+        arena->map.img_hdr.active_rules = UINT32_C(1);
+        arena->map.img_hdr.merkle_root = out->merkle;
+    }
+    uint32_t req = PHY_QSCAR_FLAG_UNITARY | PHY_QSCAR_FLAG_DUAL | PHY_QSCAR_FLAG_FULL_SUP |
+                   PHY_QSCAR_FLAG_DTC_P2 | PHY_QSCAR_FLAG_THERMAL;
+    return ((out->flags & req) == req) ? UINT32_C(1) : UINT32_C(0);
+}
+
+uint32_t phy_analyze_qscar(phy_arena_u *arena, phy_qscar_analysis_t *out) {
+    static const int8_t w_re[4][4] = {
+        {1, 0, 1, 0},
+        {1, 0, -1, 0},
+        {1, 0, 1, 0},
+        {1, 0, -1, 0},
+    };
+    static const int8_t w_im[4][4] = {
+        {0, 1, 0, -1},
+        {0, 1, 0, 1},
+        {0, -1, 0, 1},
+        {0, -1, 0, -1},
+    };
+    return phy_analyze_qscar_custom(arena, w_re, w_im, false, out);
+}
+
+void phy_build_dipole_toffoli(uint8_t t[64]) {
+    if (t == NULL) {
+        return;
+    }
+    for (uint8_t u = 0U; u < 64U; ++u) {
+        t[u] = u;
+    }
+    /* (1,2,1)=25 <-> (2,0,2)=34 */
+    t[25] = 34U;
+    t[34] = 25U;
+}
+
+static void phy_frac_hsf_sector_stats(const uint8_t t[64], const uint8_t tinv[64], uint32_t n_sites,
+                                      phy_fracton_scale_ws_t *ws, uint16_t *out_sec,
+                                      uint16_t *out_comps, uint16_t *out_largest,
+                                      uint16_t *out_frozen) {
+    uint16_t sec_cnt[25][85];
+    for (uint32_t q = 0U; q < 25U; ++q) {
+        for (uint32_t d = 0U; d < 85U; ++d) {
+            sec_cnt[q][d] = 0U;
+        }
+    }
+    uint32_t total_st = UINT32_C(1) << (n_sites * UINT32_C(2));
+    uint32_t best_q = 0U;
+    uint32_t best_d = 0U;
+    uint16_t best_sz = 0U;
+    for (uint32_t st = 0U; st < total_st; ++st) {
+        int64_t q0 = INT64_C(0);
+        int64_t d0 = INT64_C(0);
+        phy_frac_qd((uint64_t)st, n_sites, &q0, &d0);
+        if (q0 >= 0 && q0 < 25 && d0 >= 0 && d0 < 85) {
+            sec_cnt[q0][d0] += 1U;
+            if (sec_cnt[q0][d0] > best_sz) {
+                best_sz = sec_cnt[q0][d0];
+                best_q = (uint32_t)q0;
+                best_d = (uint32_t)d0;
+            }
+        }
+    }
+    uint32_t n_sec = 0U;
+    for (uint32_t st = 0U; st < total_st; ++st) {
+        int64_t q0 = INT64_C(0);
+        int64_t d0 = INT64_C(0);
+        phy_frac_qd((uint64_t)st, n_sites, &q0, &d0);
+        if (q0 == (int64_t)best_q && d0 == (int64_t)best_d && n_sec < UINT32_C(2048)) {
+            ws->sec_states[n_sec++] = st;
+        }
+    }
+    phy_vzero_u8(ws->vis, total_st);
+    uint16_t n_comps = 0U;
+    uint16_t max_comp = 0U;
+    uint16_t frozen = 0U;
+    uint32_t st_mask = total_st - UINT32_C(1);
+
+    for (uint32_t i = 0U; i < n_sec; ++i) {
+        uint32_t root = ws->sec_states[i];
+        if (ws->vis[root] != 0U) {
+            continue;
+        }
+        uint32_t head = 0U;
+        uint32_t tail = 0U;
+        ws->vis[root] = 1U;
+        ws->queue[tail++] = root;
+        while (head < tail) {
+            uint32_t cur = ws->queue[head++];
+            for (uint32_t pos = 0U; pos + 2U < n_sites; ++pos) {
+                uint32_t n1 = (uint32_t)(phy_frac32_apply_gate(t, (uint64_t)cur, pos) & st_mask);
+                if (ws->vis[n1] == 0U && tail < UINT32_C(2048)) {
+                    ws->vis[n1] = 1U;
+                    ws->queue[tail++] = n1;
+                }
+                uint32_t n2 = (uint32_t)(phy_frac32_apply_gate(tinv, (uint64_t)cur, pos) & st_mask);
+                if (ws->vis[n2] == 0U && tail < UINT32_C(2048)) {
+                    ws->vis[n2] = 1U;
+                    ws->queue[tail++] = n2;
+                }
+            }
+        }
+        uint16_t csz = (uint16_t)tail;
+        ++n_comps;
+        if (csz > max_comp) {
+            max_comp = csz;
+        }
+        if (csz == 1U) {
+            ++frozen;
+        }
+    }
+    *out_sec = (uint16_t)n_sec;
+    *out_comps = n_comps;
+    *out_largest = max_comp;
+    *out_frozen = frozen;
+}
+
+uint32_t phy_analyze_fracton_comp(phy_arena_u *arena, const uint8_t t_sample[64],
+                                  const uint8_t t_toff[64], phy_fracton_scale_ws_t *ws,
+                                  phy_fracton_comp_t *out) {
+    if (t_sample == NULL || t_toff == NULL || ws == NULL || out == NULL) {
+        return UINT32_C(0);
+    }
+    phy_vzero_u8((uint8_t *)out, sizeof(*out));
+    uint8_t ts_inv[64];
+    for (uint8_t u = 0U; u < 64U; ++u) {
+        uint8_t v = (uint8_t)(t_sample[u] & 63U);
+        out->t_sample[u] = v;
+        ts_inv[v] = u;
+    }
+
+    uint64_t seen = UINT64_C(0);
+    bool invol = true;
+    bool lap_ok = true;
+    for (uint8_t u = 0U; u < 64U; ++u) {
+        uint8_t v = (uint8_t)(t_toff[u] & 63U);
+        out->t_toff[u] = v;
+        out->t_toff_inv[v] = u;
+        seen |= (UINT64_C(1) << v);
+    }
+    bool bij = (seen == UINT64_C(0xFFFFFFFFFFFFFFFF));
+    for (uint8_t u = 0U; u < 64U; ++u) {
+        if (out->t_toff[out->t_toff[u]] != u) {
+            invol = false;
+        }
+        uint32_t uu = (uint32_t)u;
+        int32_t a = (int32_t)((uu >> 4U) & UINT32_C(3));
+        int32_t b = (int32_t)((uu >> 2U) & UINT32_C(3));
+        int32_t c = (int32_t)(uu & UINT32_C(3));
+        uint32_t o = (uint32_t)out->t_toff[u];
+        int32_t oa = (int32_t)((o >> 4U) & UINT32_C(3));
+        int32_t ob = (int32_t)((o >> 2U) & UINT32_C(3));
+        int32_t oc = (int32_t)(o & UINT32_C(3));
+        int32_t phi = oa - a;
+        if ((ob - b) != -(2 * phi) || (oc - c) != phi) {
+            lap_ok = false;
+        }
+    }
+    out->is_involutive = (bij && invol) ? UINT8_C(1) : UINT8_C(0);
+    out->laplacian_ok = lap_ok ? UINT8_C(1) : UINT8_C(0);
+
+    bool ccx_ok = true;
+    for (uint32_t ca = 0U; ca < 2U; ++ca) {
+        for (uint32_t cc = 0U; cc < 2U; ++cc) {
+            for (uint32_t tgt = 0U; tgt < 2U; ++tgt) {
+                uint32_t in_u =
+                    (ca != 0U && cc != 0U && tgt != 0U)
+                        ? UINT32_C(34)
+                        : ((ca << 4U) | ((tgt != 0U ? UINT32_C(0) : UINT32_C(2)) << 2U) | cc);
+                uint32_t o_u = (uint32_t)out->t_toff[in_u];
+                uint32_t got_tgt =
+                    ((((o_u >> 2U) & UINT32_C(3)) == UINT32_C(0)) ? UINT32_C(1) : UINT32_C(0));
+                uint32_t exp_tgt = tgt ^ (ca & cc);
+                if (got_tgt != exp_tgt) {
+                    ccx_ok = false;
+                }
+            }
+        }
+    }
+    out->ccx_ok = ccx_ok ? UINT8_C(1) : UINT8_C(0);
+
+    for (uint32_t idx = 0U; idx < 3U; ++idx) {
+        phy_frac_hsf_sector_stats(out->t_sample, ts_inv, 6U + idx, ws, &out->sec[idx],
+                                  &out->comps[idx], &out->largest[idx], &out->frozen[idx]);
+    }
+    bool strict = ((uint32_t)out->largest[1] * (uint32_t)out->sec[0] <
+                   (uint32_t)out->largest[0] * (uint32_t)out->sec[1]) &&
+                  ((uint32_t)out->largest[2] * (uint32_t)out->sec[1] <
+                   (uint32_t)out->largest[1] * (uint32_t)out->sec[2]);
+    out->scaling_strict = strict ? UINT8_C(1) : UINT8_C(0);
+
+    uint32_t fl = UINT32_C(0);
+    if (bij) {
+        fl |= PHY_FCOMP_FLAG_BIJECTIVE;
+    }
+    if (out->is_involutive != 0U) {
+        fl |= PHY_FCOMP_FLAG_INVOLUTIVE;
+    }
+    if (out->laplacian_ok != 0U) {
+        fl |= PHY_FCOMP_FLAG_LAPLACIAN;
+    }
+    if (out->ccx_ok != 0U) {
+        fl |= PHY_FCOMP_FLAG_CCX;
+    }
+    if (out->scaling_strict != 0U) {
+        fl |= PHY_FCOMP_FLAG_SCALING;
+    }
+    out->flags = fl;
+
+    uint64_t mh = UINT64_C(0xCBF29CE484222325);
+    for (uint32_t u = 0U; u < 64U; ++u) {
+        mh = phy_fnv1a64_u64(mh, ((uint64_t)out->t_toff[u] << 8U) | (uint64_t)out->t_sample[u]);
+    }
+    mh = phy_fnv1a64_u64(mh, ((uint64_t)fl << 32U) | (uint64_t)out->sec[2]);
+    out->merkle = mh;
+
+    if (arena != NULL) {
+        phy_vzero_u64(arena->cells[PHY_SLOT_FRAC_COMP_META].u64, 8U);
+        arena->map.frac_comp_meta[0].merkle = out->merkle;
+        arena->map.frac_comp_meta[0].flags = out->flags;
+        arena->map.frac_comp_meta[0].sec6 = out->sec[0];
+        arena->map.frac_comp_meta[0].sec7 = out->sec[1];
+        arena->map.frac_comp_meta[0].sec8 = out->sec[2];
+        arena->map.frac_comp_meta[0].comp6 = out->comps[0];
+        arena->map.frac_comp_meta[0].comp7 = out->comps[1];
+        arena->map.frac_comp_meta[0].comp8 = out->comps[2];
+        arena->map.frac_comp_meta[0].largest6 = out->largest[0];
+        arena->map.frac_comp_meta[0].largest7 = out->largest[1];
+        arena->map.frac_comp_meta[0].largest8 = out->largest[2];
+        arena->map.frac_comp_meta[0].frozen6 = out->frozen[0];
+        arena->map.frac_comp_meta[0].frozen7 = out->frozen[1];
+        arena->map.frac_comp_meta[0].frozen8 = out->frozen[2];
+        arena->map.frac_comp_meta[0].ccx_ok = out->ccx_ok;
+        arena->map.frac_comp_meta[0].laplacian_ok = out->laplacian_ok;
+        arena->map.frac_comp_meta[0].is_involutive = out->is_involutive;
+        arena->map.frac_comp_meta[0].scaling_strict = out->scaling_strict;
+        arena->map.img_hdr.active_rules = UINT32_C(1);
+        arena->map.img_hdr.merkle_root = out->merkle;
+    }
+    uint32_t req = PHY_FCOMP_FLAG_BIJECTIVE | PHY_FCOMP_FLAG_INVOLUTIVE | PHY_FCOMP_FLAG_LAPLACIAN |
+                   PHY_FCOMP_FLAG_CCX | PHY_FCOMP_FLAG_SCALING;
+    return ((out->flags & req) == req) ? UINT32_C(1) : UINT32_C(0);
+}

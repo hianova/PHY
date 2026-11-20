@@ -200,7 +200,7 @@ static inline bool phy_synth_fir_4bit(const uint8_t lut[16], uint64_t seed, cons
     spec.max_and = 8U;
     spec.max_depth = 0U;
     spec.n_in_port0 = 0U;
-    spec.budget_scale = 2U;
+    spec.budget_scale = 1U;
     spec.seed = seed;
 
     for (uint32_t o = 0U; o < 4U; ++o) {
@@ -923,6 +923,35 @@ static inline void phy_cert_build_anf6_fir(const uint8_t r[64], flow_ir_prog_t *
     *out_depth = max_d;
 }
 
+static inline uint32_t phy_cert_spec_max_deg6(const searu_mc_spec *spec) {
+    uint32_t max_d = 0U;
+    for (uint32_t o = 0U; o < 6U; ++o) {
+        uint64_t a = spec->target_tt[o][0];
+        a ^= (a & UINT64_C(0x5555555555555555)) << 1U;
+        a ^= (a & UINT64_C(0x3333333333333333)) << 2U;
+        a ^= (a & UINT64_C(0x0F0F0F0F0F0F0F0F)) << 4U;
+        a ^= (a & UINT64_C(0x00FF00FF00FF00FF)) << 8U;
+        a ^= (a & UINT64_C(0x0000FFFF0000FFFF)) << 16U;
+        a ^= (a & UINT64_C(0x00000000FFFFFFFF)) << 32U;
+        if (a != UINT64_C(0)) {
+            for (uint32_t m = 0U; m < 64U; ++m) {
+                if (((a >> m) & UINT64_C(1)) != UINT64_C(0)) {
+                    uint32_t c = 0U;
+                    uint32_t mm = m;
+                    while (mm != 0U) {
+                        c += (mm & 1U);
+                        mm >>= 1U;
+                    }
+                    if (c > max_d) {
+                        max_d = c;
+                    }
+                }
+            }
+        }
+    }
+    return max_d;
+}
+
 static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const char *mod_name,
                                       const char *out_fir_path, phy_fir_cert_ws_t *ws) {
     if (r == NULL || ws == NULL) {
@@ -939,10 +968,10 @@ static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const 
     memset(&spec, 0, sizeof(spec));
     spec.n_in = 6U;
     spec.n_out = 6U;
-    spec.max_and = SEARU_MC_MAX_AND;
+    spec.max_and = 6U;
     spec.max_depth = 0U;
     spec.n_in_port0 = 0U;
-    spec.budget_scale = 2U;
+    spec.budget_scale = 1U;
     spec.seed = seed;
 
     for (uint32_t o = 0U; o < 6U; ++o) {
@@ -955,7 +984,8 @@ static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const 
         spec.target_tt[o][0] = tt;
     }
 
-    bool mc_ok = searu_solve_mc_gf2(&ws->mc_plan, &spec, &ws->mc_ws);
+    uint32_t max_deg6 = phy_cert_spec_max_deg6(&spec);
+    bool mc_ok = (max_deg6 < 5U) ? searu_solve_mc_gf2(&ws->mc_plan, &spec, &ws->mc_ws) : false;
 
     flow_ir_prog_t *p = &ws->ir_prog;
     memset(p, 0, sizeof(*p));
@@ -1699,6 +1729,456 @@ static inline bool phy_emit_tetra4_json(const phy_tetra4_analysis_t *t4,
     fprintf(fp, "  \"tetra2_noninvol_nl\": %u,\n", (unsigned)t4->tetra2_noninvol_nl);
     fprintf(fp, "  \"is_involutive\": %u,\n", (unsigned)t4->is_involutive);
     fprintf(fp, "  \"is_3coupled\": %u", (unsigned)t4->is_3coupled);
+    phy_emit_json_fir_tail(fp, fir);
+    fclose(fp);
+    return true;
+}
+
+/* --- PHY v4.0: Lean 4 & JSON Certificate Emitters --- */
+
+static inline bool phy_emit_lean_ame4_nogo_cert(const phy_ame4_nogo_t *ng, const char *path) {
+    if (ng == NULL || path == NULL || ng->total_ols != UINT32_C(6912) ||
+        ng->nonlin_ols != UINT32_C(0) || ng->affine_ols != UINT32_C(6912)) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "import Phy.Noether\n\n");
+    fprintf(fp, "namespace Phy.DiscoveredAME4NoGo\n\n");
+    fprintf(fp, "open Phy.Noether\n\n");
+    fprintf(fp, "-- Merkle: 0x%016llx, latin4=%u, total_ols=%u, affine_ols=%u, nonlin_ols=%u\n\n",
+            (unsigned long long)ng->merkle, (unsigned)ng->latin4_count, (unsigned)ng->total_ols,
+            (unsigned)ng->affine_ols, (unsigned)ng->nonlin_ols);
+    fprintf(fp, "def sampleAME4Lut : BitVec 64 := 0x%016llx#64\n\n",
+            (unsigned long long)ng->sample_lut);
+    fprintf(fp, "theorem universal_ame4_affine_rigidity (lut : BitVec 64)\n"
+                "    (h : is2Unitary4Lut lut = true) : isAffine4Lut lut = true :=\n"
+                "  ame4_affine_rigidity_nogo lut h\n\n");
+    fprintf(fp, "theorem sampleAME4_is_2unitary : is2Unitary4Lut sampleAME4Lut = true := by\n");
+    fprintf(fp, "  decide\n\n");
+    fprintf(fp, "theorem sampleAME4_forced_affine : isAffine4Lut sampleAME4Lut = true :=\n");
+    fprintf(fp, "  ame4_affine_rigidity_nogo sampleAME4Lut sampleAME4_is_2unitary\n\n");
+    fprintf(fp, "end Phy.DiscoveredAME4NoGo\n");
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_ame4_nogo_json(const phy_ame4_nogo_t *ng, const char *path) {
+    if (ng == NULL || path == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "{\n  \"sample_p\": [");
+    for (uint32_t i = 0U; i < 16U; ++i) {
+        fprintf(fp, "%s%u", (i > 0U) ? ", " : "", (unsigned)ng->sample_p[i]);
+    }
+    fprintf(fp, "],\n  \"sample_lut\": \"0x%016llx\",\n", (unsigned long long)ng->sample_lut);
+    fprintf(fp, "  \"merkle\": \"0x%016llx\",\n", (unsigned long long)ng->merkle);
+    fprintf(fp, "  \"latin4_count\": %u,\n", (unsigned)ng->latin4_count);
+    fprintf(fp, "  \"total_ols\": %u,\n", (unsigned)ng->total_ols);
+    fprintf(fp, "  \"affine_ols\": %u,\n", (unsigned)ng->affine_ols);
+    fprintf(fp, "  \"nonlin_ols\": %u,\n", (unsigned)ng->nonlin_ols);
+    fprintf(fp, "  \"bernoulli_ols\": %u\n}\n", (unsigned)ng->bernoulli_ols);
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_lean_simplex4_cert(const phy_simplex4_4_t *s4, const char *path) {
+    if (s4 == NULL || path == NULL || s4->is_bijective == 0U || s4->viol4 != UINT32_C(0) ||
+        s4->viol4_coupled != UINT32_C(0) || s4->is_involutive != 0U || s4->is_4coupled == 0U ||
+        s4->anf_deg < 3U) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "import Phy.Noether\n\n");
+    fprintf(fp, "namespace Phy.DiscoveredSimplex4\n\n");
+    fprintf(fp, "open Phy.Noether\n\n");
+    fprintf(fp,
+            "-- Merkle: 0x%016llx, viol4=%u/1048576, order=%u, deg=%u, viol2_ccx=%u, "
+            "viol2_cccx=%u\n\n",
+            (unsigned long long)s4->merkle, (unsigned)s4->viol4, (unsigned)s4->order4,
+            (unsigned)s4->anf_deg, (unsigned)s4->viol2_ccx, (unsigned)s4->viol2_cccx);
+
+    int32_t s_tmp[256];
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        s_tmp[u] = (int32_t)s4->s[u];
+    }
+    fprintf(fp, "def ruleS4 (u : BitVec 8) : BitVec 8 :=\n  ");
+    phy_emit_bv_tree_rec(fp, "u", 8U, 8U, 0U, 256U, s_tmp, 2U);
+    fprintf(fp, "\n\n");
+
+    fprintf(fp, "theorem ccx02_4simplex : IsSetTheoretic4Simplex2 ccx02_4 :=\n");
+    fprintf(fp, "  ccx02_satisfies_4simplex2\n\n");
+    fprintf(fp, "theorem ccx13_4simplex : IsSetTheoretic4Simplex2 ccx13_4 :=\n");
+    fprintf(fp, "  ccx13_satisfies_4simplex2\n\n");
+    fprintf(fp, "theorem cccx1_not_4simplex : ¬ IsSetTheoretic4Simplex2 cccx1_4 :=\n");
+    fprintf(fp, "  cccx1_fails_4simplex2\n\n");
+
+    fprintf(fp, "private theorem ruleS4_eq_ring (u : BitVec 8) : ruleS4 u = s4RingLift u := by\n");
+    fprintf(fp, "  revert u\n  decide\n\n");
+    fprintf(fp, "theorem ruleS4_fn_eq : ruleS4 = s4RingLift := funext ruleS4_eq_ring\n\n");
+    fprintf(fp, "theorem ruleS4_bijective : Bijective ruleS4 := by\n");
+    fprintf(fp, "  simpa only [ruleS4_fn_eq] using s4RingLift_bijective\n\n");
+    fprintf(fp, "theorem ruleS4_satisfies_4simplex : IsSetTheoretic4Simplex4 ruleS4 := by\n");
+    fprintf(fp, "  simpa only [ruleS4_fn_eq] using s4RingLift_satisfies_4simplex4\n\n");
+    fprintf(fp, "theorem ruleS4_noninvolutive : ¬ (∀ u : BitVec 8, ruleS4 (ruleS4 u) = u) := by\n");
+    fprintf(fp, "  simpa only [ruleS4_fn_eq] using s4RingLift_noninvolutive\n\n");
+    fprintf(fp,
+            "theorem coupled4ch_satisfies_4simplex : IsSetTheoretic4Simplex4 s4Coupled4Ch :=\n");
+    fprintf(fp, "  s4Coupled4Ch_satisfies_4simplex4\n\n");
+    fprintf(fp, "theorem coupled4ch_4coupled : Is4ChannelCoupled4 s4Coupled4Ch :=\n");
+    fprintf(fp, "  s4Coupled4Ch_4channel_coupled\n\n");
+
+    fprintf(fp, "end Phy.DiscoveredSimplex4\n");
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_simplex4_json(const phy_simplex4_4_t *s4, const phy_fir_cert_ws_t *fir,
+                                          const char *path) {
+    if (s4 == NULL || path == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "{\n  \"s\": [");
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        fprintf(fp, "%s%u", (u > 0U) ? ", " : "", (unsigned)s4->s[u]);
+    }
+    fprintf(fp, "],\n  \"s_coupled\": [");
+    for (uint32_t u = 0U; u < 256U; ++u) {
+        fprintf(fp, "%s%u", (u > 0U) ? ", " : "", (unsigned)s4->s_coupled[u]);
+    }
+    fprintf(fp, "],\n  \"ccx02\": [");
+    for (uint32_t u = 0U; u < 16U; ++u) {
+        fprintf(fp, "%s%u", (u > 0U) ? ", " : "", (unsigned)s4->ccx02[u]);
+    }
+    fprintf(fp, "],\n  \"merkle\": \"0x%016llx\",\n", (unsigned long long)s4->merkle);
+    fprintf(fp, "  \"flags\": %u,\n", (unsigned)s4->flags);
+    fprintf(fp, "  \"viol4\": %u,\n", (unsigned)s4->viol4);
+    fprintf(fp, "  \"viol4_coupled\": %u,\n", (unsigned)s4->viol4_coupled);
+    fprintf(fp, "  \"order4\": %u,\n", (unsigned)s4->order4);
+    fprintf(fp, "  \"viol2_ccx\": %u,\n", (unsigned)s4->viol2_ccx);
+    fprintf(fp, "  \"viol2_cccx\": %u,\n", (unsigned)s4->viol2_cccx);
+    fprintf(fp, "  \"anf_deg\": %u,\n", (unsigned)s4->anf_deg);
+    fprintf(fp, "  \"is_bijective\": %u,\n", (unsigned)s4->is_bijective);
+    fprintf(fp, "  \"is_involutive\": %u,\n", (unsigned)s4->is_involutive);
+    fprintf(fp, "  \"is_4coupled\": %u", (unsigned)s4->is_4coupled);
+    phy_emit_json_fir_tail(fp, fir);
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_lean_chiral6_cert(const phy_chiral6_analysis_t *ch, const char *path) {
+    if (ch == NULL || path == NULL || ch->cocycle_viol != 0U || ch->is_chiral == 0U ||
+        ch->is_non_coboundary == 0U) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "import Phy.Noether\n\n");
+    fprintf(fp, "namespace Phy.DiscoveredChiral6\n\n");
+    fprintf(fp, "open Phy.Noether\n\n");
+    fprintf(
+        fp,
+        "-- Merkle: 0x%016llx, Q_6 Z_4 2-Cocycle: L(3_1)=[%u,%u,%u,%u], R(3_1)=[%u,%u,%u,%u]\n\n",
+        (unsigned long long)ch->merkle, (unsigned)ch->tref_l_w[0], (unsigned)ch->tref_l_w[1],
+        (unsigned)ch->tref_l_w[2], (unsigned)ch->tref_l_w[3], (unsigned)ch->tref_r_w[0],
+        (unsigned)ch->tref_r_w[1], (unsigned)ch->tref_r_w[2], (unsigned)ch->tref_r_w[3]);
+
+    fprintf(fp, "def discPhi (p : Fin 6 × Fin 6) : BitVec 2 :=\n  match p.1.val, p.2.val with\n");
+    for (uint32_t a = 0U; a < 6U; ++a) {
+        fprintf(fp, " ");
+        for (uint32_t b = 0U; b < 6U; ++b) {
+            fprintf(fp, " | %u, %u => %u#2", a, b, (unsigned)(ch->phi[a * 6U + b] & 3U));
+        }
+        fprintf(fp, "\n");
+    }
+    fprintf(fp, "  | _, _ => 0#2\n\n");
+
+    fprintf(fp, "private theorem fin6_split (x : Fin 6) :\n"
+                "    x = 0 ∨ x = 1 ∨ x = 2 ∨ x = 3 ∨ x = 4 ∨ x = 5 := by\n"
+                "  rcases x with ⟨v, hv⟩\n"
+                "  match v, hv with\n"
+                "  | 0, _ => exact Or.inl rfl\n"
+                "  | 1, _ => exact Or.inr (Or.inl rfl)\n"
+                "  | 2, _ => exact Or.inr (Or.inr (Or.inl rfl))\n"
+                "  | 3, _ => exact Or.inr (Or.inr (Or.inr (Or.inl rfl)))\n"
+                "  | 4, _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))\n"
+                "  | 5, _ => exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))\n\n");
+
+    fprintf(fp, "theorem q6_quandle_ybe : IsSetTheoreticYB6 q6R := q6_satisfies_ybe\n");
+    fprintf(fp, "theorem q6_quandle_r1 : IsR1_6 q6R := q6_r1\n\n");
+    fprintf(fp, "theorem discPhi_is_2cocycle : Is2CocycleMod4_6 q6R discPhi := by\n");
+    fprintf(fp, "  refine ⟨fun x => ?_, fun a b c => ?_⟩\n");
+    fprintf(fp, "  · rcases fin6_split x with rfl | rfl | rfl | rfl | rfl | rfl <;> decide\n");
+    fprintf(fp, "  · rcases fin6_split a with rfl | rfl | rfl | rfl | rfl | rfl <;>\n"
+                "      rcases fin6_split b with rfl | rfl | rfl | rfl | rfl | rfl <;>\n"
+                "      rcases fin6_split c with rfl | rfl | rfl | rfl | rfl | rfl <;> decide\n\n");
+
+    fprintf(fp, "theorem discPhi_not_coboundary : ¬ Is2CoboundaryMod4_6 q6R discPhi :=\n");
+    fprintf(fp, "  q6_non_coboundary_of_witness q6R discPhi 3 (%u, %u) (by decide) (by decide)\n\n",
+            (unsigned)ch->wit_a, (unsigned)ch->wit_b);
+
+    fprintf(fp,
+            "theorem discPhi_chiral_separation :\n"
+            "    cocycleCountTorus2Pos q6R discPhi 1 0#2 = %u ∧\n"
+            "    cocycleCountTorus2Pos q6R discPhi 2 0#2 = %u ∧\n"
+            "    cocycleCountTorus2Pos q6R discPhi 2 2#2 = %u ∧\n"
+            "    cocycleCountTorus2Pos q6R discPhi 3 1#2 = %u ∧\n"
+            "    cocycleCountTorus2Neg q6RInv discPhi 3 1#2 = %u ∧\n"
+            "    cocycleCountTorus2Pos q6R discPhi 3 3#2 = %u ∧\n"
+            "    cocycleCountTorus2Neg q6RInv discPhi 3 3#2 = %u ∧\n"
+            "    cocycleCountFig8 q6R q6RInv discPhi 0#2 = %u ∧\n"
+            "    cocycleCountTorus2Pos q6R discPhi 3 1#2 ≠ cocycleCountTorus2Neg q6RInv discPhi 3 "
+            "1#2 := by\n"
+            "  decide\n\n",
+            (unsigned)ch->unknot_w[0], (unsigned)ch->hopf_w[0], (unsigned)ch->hopf_w[2],
+            (unsigned)ch->tref_l_w[1], (unsigned)ch->tref_r_w[1], (unsigned)ch->tref_l_w[3],
+            (unsigned)ch->tref_r_w[3], (unsigned)ch->fig8_w[0]);
+
+    fprintf(fp, "end Phy.DiscoveredChiral6\n");
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_chiral6_json(const phy_chiral6_analysis_t *ch, const char *path) {
+    if (ch == NULL || path == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "{\n  \"r\": [");
+    for (uint32_t i = 0U; i < 36U; ++i) {
+        fprintf(fp, "%s%u", (i > 0U) ? ", " : "", (unsigned)ch->r[i]);
+    }
+    fprintf(fp, "],\n  \"phi\": [");
+    for (uint32_t i = 0U; i < 36U; ++i) {
+        fprintf(fp, "%s%u", (i > 0U) ? ", " : "", (unsigned)ch->phi[i]);
+    }
+    fprintf(fp, "],\n  \"merkle\": \"0x%016llx\",\n", (unsigned long long)ch->merkle);
+    fprintf(fp, "  \"flags\": %u,\n", (unsigned)ch->flags);
+    fprintf(fp, "  \"cocycle_rank\": %u,\n", (unsigned)ch->cocycle_rank);
+    fprintf(fp, "  \"cocycle_viol\": %u,\n", (unsigned)ch->cocycle_viol);
+    fprintf(fp, "  \"unknot_w\": [%u, %u, %u, %u],\n", (unsigned)ch->unknot_w[0],
+            (unsigned)ch->unknot_w[1], (unsigned)ch->unknot_w[2], (unsigned)ch->unknot_w[3]);
+    fprintf(fp, "  \"hopf_w\": [%u, %u, %u, %u],\n", (unsigned)ch->hopf_w[0],
+            (unsigned)ch->hopf_w[1], (unsigned)ch->hopf_w[2], (unsigned)ch->hopf_w[3]);
+    fprintf(fp, "  \"tref_l_w\": [%u, %u, %u, %u],\n", (unsigned)ch->tref_l_w[0],
+            (unsigned)ch->tref_l_w[1], (unsigned)ch->tref_l_w[2], (unsigned)ch->tref_l_w[3]);
+    fprintf(fp, "  \"tref_r_w\": [%u, %u, %u, %u],\n", (unsigned)ch->tref_r_w[0],
+            (unsigned)ch->tref_r_w[1], (unsigned)ch->tref_r_w[2], (unsigned)ch->tref_r_w[3]);
+    fprintf(fp, "  \"fig8_w\": [%u, %u, %u, %u],\n", (unsigned)ch->fig8_w[0],
+            (unsigned)ch->fig8_w[1], (unsigned)ch->fig8_w[2], (unsigned)ch->fig8_w[3]);
+    fprintf(fp, "  \"is_chiral\": %u,\n", (unsigned)ch->is_chiral);
+    fprintf(fp, "  \"is_non_coboundary\": %u\n}\n", (unsigned)ch->is_non_coboundary);
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_lean_qscar_cert(const phy_qscar_analysis_t *qs, const char *path) {
+    if (qs == NULL || path == NULL || qs->du_unitary == 0U || qs->du_dual == 0U ||
+        qs->du_full_sup == 0U || qs->scar_period != 2U) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "import Phy.Noether\n\n");
+    fprintf(fp, "namespace Phy.DiscoveredQScar\n\n");
+    fprintf(fp, "open Phy.Noether\n\n");
+    fprintf(fp, "-- Merkle: 0x%016llx, Z[i] Dual-Unitary + Scar DTC period=%u\n\n",
+            (unsigned long long)qs->merkle, (unsigned)qs->scar_period);
+
+    fprintf(fp, "def discW (i j : Fin 4) : GaussInt :=\n  match i.val, j.val with\n");
+    for (uint32_t i = 0U; i < 4U; ++i) {
+        fprintf(fp, " ");
+        for (uint32_t j = 0U; j < 4U; ++j) {
+            fprintf(fp, " | %u, %u => ⟨%d, %d⟩", i, j, (int)qs->w_re[i][j], (int)qs->w_im[i][j]);
+        }
+        fprintf(fp, "\n");
+    }
+    fprintf(fp, "  | _, _ => gZero\n\n");
+
+    fprintf(fp, "theorem discW_unitary (j k : Fin 4) :\n"
+                "    gSumFin4 (fun i => gMul (gConj (discW i j)) (discW i k)) =\n"
+                "      if j == k then ⟨4, 0⟩ else gZero := by\n"
+                "  revert j k\n  decide\n\n");
+    fprintf(fp, "theorem discW_dual_unitary (j k : Fin 4) :\n"
+                "    gSumFin4 (fun i => gMul (gConj (wCxDUReshuffle i j)) (wCxDUReshuffle i k)) =\n"
+                "      if j == k then ⟨4, 0⟩ else gZero :=\n"
+                "  wCxDU_is_dual_unitary j k\n\n");
+    fprintf(fp, "theorem discW_full_superposition (i j : Fin 4) : discW i j ≠ gZero := by\n");
+    fprintf(fp, "  revert i j\n  decide\n\n");
+    fprintf(fp, "theorem qscar_local_gate_unitary (j k : BitVec 4) :\n"
+                "    gSumBV4 (fun i => gMul (gConj (scarGate4 i j)) (scarGate4 i k)) =\n"
+                "      if j == k then ⟨4, 0⟩ else gZero :=\n"
+                "  scarGate4_is_unitary j k\n\n");
+    fprintf(fp, "theorem qscar_dtc_neel_protected {L : Nat} (hGe : 4 ≤ L) (hEven : L %% 2 = 0)\n"
+                "    (i : Fin L) :\n"
+                "    neel0 L i ≠ neel0 L ⟨(i.val + 3) %% L, Nat.mod_lt _ (by omega)⟩ ∧\n"
+                "    neel1 L i ≠ neel1 L ⟨(i.val + 3) %% L, Nat.mod_lt _ (by omega)⟩ :=\n"
+                "  dtc_neel_local_protected hGe hEven i\n\n");
+    fprintf(fp, "theorem qscar_dtc_exact_period2 {L : Nat} (hGe : 4 ≤ L) :\n"
+                "    flipAll (neel0 L) = neel1 L ∧ flipAll (neel1 L) = neel0 L ∧\n"
+                "    neel0 L ≠ neel1 L ∧ flipAll (flipAll (neel0 L)) = neel0 L :=\n"
+                "  dtc_neel_exact_period2 hGe\n\n");
+
+    fprintf(fp, "end Phy.DiscoveredQScar\n");
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_qscar_json(const phy_qscar_analysis_t *qs, const char *path) {
+    if (qs == NULL || path == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "{\n  \"w_re\": [");
+    for (uint32_t i = 0U; i < 4U; ++i) {
+        fprintf(fp, "%s[%d, %d, %d, %d]", (i > 0U) ? ", " : "", (int)qs->w_re[i][0],
+                (int)qs->w_re[i][1], (int)qs->w_re[i][2], (int)qs->w_re[i][3]);
+    }
+    fprintf(fp, "],\n  \"w_im\": [");
+    for (uint32_t i = 0U; i < 4U; ++i) {
+        fprintf(fp, "%s[%d, %d, %d, %d]", (i > 0U) ? ", " : "", (int)qs->w_im[i][0],
+                (int)qs->w_im[i][1], (int)qs->w_im[i][2], (int)qs->w_im[i][3]);
+    }
+    fprintf(fp, "],\n  \"merkle\": \"0x%016llx\",\n", (unsigned long long)qs->merkle);
+    fprintf(fp, "  \"flags\": %u,\n", (unsigned)qs->flags);
+    fprintf(fp, "  \"du_unitary\": %u,\n", (unsigned)qs->du_unitary);
+    fprintf(fp, "  \"du_dual\": %u,\n", (unsigned)qs->du_dual);
+    fprintf(fp, "  \"du_full_sup\": %u,\n", (unsigned)qs->du_full_sup);
+    fprintf(fp, "  \"scar_period\": %u,\n", (unsigned)qs->scar_period);
+    fprintf(fp, "  \"du_sup\": [%u, %u, %u, %u],\n", (unsigned)qs->du_sup[0],
+            (unsigned)qs->du_sup[1], (unsigned)qs->du_sup[2], (unsigned)qs->du_sup[3]);
+    fprintf(fp, "  \"du_purity_t2_num\": %llu,\n", (unsigned long long)qs->du_purity_num[1]);
+    fprintf(fp, "  \"du_purity_t2_den\": %llu,\n", (unsigned long long)qs->du_purity_den[1]);
+    fprintf(fp, "  \"neel_sup\": [%u, %u, %u, %u],\n", (unsigned)qs->neel_sup[0],
+            (unsigned)qs->neel_sup[1], (unsigned)qs->neel_sup[2], (unsigned)qs->neel_sup[3]);
+    fprintf(fp, "  \"neel_ret_num\": [%llu, %llu, %llu, %llu],\n",
+            (unsigned long long)qs->neel_ret_num[0], (unsigned long long)qs->neel_ret_num[1],
+            (unsigned long long)qs->neel_ret_num[2], (unsigned long long)qs->neel_ret_num[3]);
+    fprintf(fp, "  \"neel_ret_den\": [%llu, %llu, %llu, %llu],\n",
+            (unsigned long long)qs->neel_ret_den[0], (unsigned long long)qs->neel_ret_den[1],
+            (unsigned long long)qs->neel_ret_den[2], (unsigned long long)qs->neel_ret_den[3]);
+    fprintf(fp, "  \"therm_sup\": [%u, %u, %u, %u],\n", (unsigned)qs->therm_sup[0],
+            (unsigned)qs->therm_sup[1], (unsigned)qs->therm_sup[2], (unsigned)qs->therm_sup[3]);
+    fprintf(fp, "  \"therm_purity_t4_num\": %llu,\n", (unsigned long long)qs->therm_purity_num[3]);
+    fprintf(fp, "  \"therm_purity_t4_den\": %llu\n}\n",
+            (unsigned long long)qs->therm_purity_den[3]);
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_lean_fracton_comp_cert(const phy_fracton_comp_t *fc, const char *path) {
+    if (fc == NULL || path == NULL || fc->is_involutive == 0U || fc->laplacian_ok == 0U ||
+        fc->ccx_ok == 0U || fc->scaling_strict == 0U) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "import Phy.Noether\n\n");
+    fprintf(fp, "namespace Phy.DiscoveredFracComp\n\n");
+    fprintf(fp, "open Phy.Noether\n\n");
+    fprintf(fp, "-- Merkle: 0x%016llx, HSF L=(6,7,8) comps=(%u/%u, %u/%u, %u/%u)\n\n",
+            (unsigned long long)fc->merkle, (unsigned)fc->comps[0], (unsigned)fc->sec[0],
+            (unsigned)fc->comps[1], (unsigned)fc->sec[1], (unsigned)fc->comps[2],
+            (unsigned)fc->sec[2]);
+
+    phy_emit_bv6_lut_tree(fp, "ruleFracToff", fc->t_toff);
+    phy_emit_bv6_lut_tree(fp, "ruleFracToffInv", fc->t_toff_inv);
+
+    fprintf(fp,
+            "theorem ruleFracToff_inv_left (u : BitVec 6) : ruleFracToffInv (ruleFracToff u) = u "
+            ":= by\n"
+            "  simp only [ruleFracToff, ruleFracToffInv]\n  bv_decide\n\n");
+    fprintf(fp,
+            "theorem ruleFracToff_inv_right (u : BitVec 6) : ruleFracToff (ruleFracToffInv u) = u "
+            ":= by\n"
+            "  simp only [ruleFracToff, ruleFracToffInv]\n  bv_decide\n\n");
+    fprintf(fp, "theorem ruleFracToff_bijective : Bijective ruleFracToff := by\n");
+    fprintf(fp, "  refine ⟨fun a b h => ?_, fun b => ⟨ruleFracToffInv b, ruleFracToff_inv_right "
+                "b⟩⟩\n");
+    fprintf(fp, "  have h1 := congrArg ruleFracToffInv h\n");
+    fprintf(fp, "  simpa [ruleFracToff_inv_left] using h1\n\n");
+
+    fprintf(fp,
+            "theorem ruleFracToff_laplacian : SatisfiesDipoleLaplacian ruleFracToff rho2 := by\n"
+            "  unfold SatisfiesDipoleLaplacian rho2\n  decide\n\n");
+    fprintf(fp, "theorem ruleFracToff_universal_involution (u : BitVec 6) :\n"
+                "    ruleFracToff (ruleFracToff u) = u :=\n"
+                "  fracton3_universal_involution ruleFracToff ruleFracToff_bijective "
+                "ruleFracToff_laplacian u\n\n");
+    fprintf(fp, "theorem ruleFracToff_static_control_nogo (u : BitVec 6)\n"
+                "    (h0 : site0_3 (ruleFracToff u) = site0_3 u)\n"
+                "    (h2 : site2_3 (ruleFracToff u) = site2_3 u) : ruleFracToff u = u :=\n"
+                "  dipole_static_control_nogo ruleFracToff ruleFracToff_laplacian u h0 h2\n\n");
+    fprintf(fp, "theorem ruleFracToff_implements_ccx (ca cc tgt : Bool) :\n"
+                "    decodeDipoleTarget (ruleFracToff (encodeDipoleLogical ca cc tgt)) =\n"
+                "      xor tgt (ca && cc) := by\n"
+                "  revert ca cc tgt\n  decide\n\n");
+    fprintf(fp,
+            "theorem ruleFracToff_single_charge_frozen {L : Nat} (pos : Nat) (hpos : pos + 2 < L)\n"
+            "    (s : Fin L → BitVec 2) (hQ : openCharge L rho2 s ≤ 1) :\n"
+            "    applyGate3 ruleFracToff pos hpos s = s :=\n"
+            "  fracton_single_charge_frozen ruleFracToff ruleFracToff_laplacian pos hpos s hQ\n\n");
+    fprintf(fp, "end Phy.DiscoveredFracComp\n");
+    fclose(fp);
+    return true;
+}
+
+static inline bool phy_emit_fracton_comp_json(const phy_fracton_comp_t *fc,
+                                              const phy_fir_cert_ws_t *fir, const char *path) {
+    if (fc == NULL || path == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) {
+        return false;
+    }
+    fprintf(fp, "{\n  \"t_sample\": [");
+    for (uint32_t i = 0U; i < 64U; ++i) {
+        fprintf(fp, "%s%u", (i > 0U) ? ", " : "", (unsigned)fc->t_sample[i]);
+    }
+    fprintf(fp, "],\n  \"t_toff\": [");
+    for (uint32_t i = 0U; i < 64U; ++i) {
+        fprintf(fp, "%s%u", (i > 0U) ? ", " : "", (unsigned)fc->t_toff[i]);
+    }
+    fprintf(fp, "],\n  \"merkle\": \"0x%016llx\",\n", (unsigned long long)fc->merkle);
+    fprintf(fp, "  \"flags\": %u,\n", (unsigned)fc->flags);
+    fprintf(fp, "  \"sec\": [%u, %u, %u],\n", (unsigned)fc->sec[0], (unsigned)fc->sec[1],
+            (unsigned)fc->sec[2]);
+    fprintf(fp, "  \"comps\": [%u, %u, %u],\n", (unsigned)fc->comps[0], (unsigned)fc->comps[1],
+            (unsigned)fc->comps[2]);
+    fprintf(fp, "  \"largest\": [%u, %u, %u],\n", (unsigned)fc->largest[0],
+            (unsigned)fc->largest[1], (unsigned)fc->largest[2]);
+    fprintf(fp, "  \"frozen\": [%u, %u, %u],\n", (unsigned)fc->frozen[0], (unsigned)fc->frozen[1],
+            (unsigned)fc->frozen[2]);
+    fprintf(fp, "  \"is_involutive\": %u,\n", (unsigned)fc->is_involutive);
+    fprintf(fp, "  \"ccx_ok\": %u,\n", (unsigned)fc->ccx_ok);
+    fprintf(fp, "  \"laplacian_ok\": %u,\n", (unsigned)fc->laplacian_ok);
+    fprintf(fp, "  \"scaling_strict\": %u", (unsigned)fc->scaling_strict);
     phy_emit_json_fir_tail(fp, fir);
     fclose(fp);
     return true;

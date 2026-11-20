@@ -1,8 +1,8 @@
-# PHY v3.0.0
+# PHY v4.0.0
 
-**Certified Discrete Physics, Exact Algebraic Atlases & Full-Stack Quantum/Silicon Projection Engine**
+**Certified Discrete Physics, Exact Algebraic Atlases, Quantum Scar Dynamics & Full-Stack Quantum/Silicon Projection Engine**
 
-`PHY v3.0.0` extends the formal discrete lattice physics and exact algebraic discovery engine built on `FLOW` across ten verified mathematical, physical, and synthesis frontiers:
+`PHY v4.0.0` extends the formal discrete lattice physics and exact algebraic discovery engine built on `FLOW` across fifteen verified mathematical, physical, and synthesis frontiers:
 
 1. **Exact 2-Site Entangled Noether Laws (`entangled`)**: Nonlinear (`GF(2)` ANF degree $\ge 2$, non-swap, non-factorizable) 2-bit-per-site Brick-Wall Reversible Universes ($P \in S_{16}, P(0)=0$) with strictly entangled 2-site charges ($q \notin \text{span}(\text{chiral separable})$) and active Hattori–Takesue currents ($j \not\equiv 0$).
 2. **Higher-Order 4-Site (2-Block) Noether Hierarchy (`q4`, $Q_2 \subsetneq Q_4$)**: Streaming exact $M_{61} = 2^{61}-1$ RREF over all 65,536 4-tuples `(a,b,c,d)` modulo the 48-dimensional trivial subspace with Stein-GCD primitive integer reduction, discovering irreducible 4-site Noether laws on non-entangled 2-site integrable universes.
@@ -12,22 +12,27 @@
 6. **2-Unitary Perfect Tensor $\text{AME}(4,8)$ (`ame8`)**: Simultaneous bijectivity, non-degeneracy, and cross-bijectivity (`Is2Unitary8`) yielding nonlinear 6-bit 2-unitary $\text{AME}(4,8)$ permutation gates.
 7. **3-Site Fracton Dipole-Laplacian Noether Theorem & Strong HSF (`fracton`)**: Open-chain exact conservation of total charge $Q$ and dipole moment $D$, universal single-charge immobility (`fracton_single_charge_frozen`), active quadrupole pair-hopping, Strong Hilbert Space Fragmentation (HSF), and $L=32$ isolated-charge immobility vs dipole spreading.
 8. **Irretractable $|X|=8$ R1+R2+R3 Biquandles & Knot Separation (`biquandle8`)**: Non-involutive, non-degenerate, indecomposable, R1 (`IsR1Biquandle8`), irretractable (`¬ IsRetractable8`) biquandles with formal torus and figure-8 knot coloring separation (`colTorus2K`, `colFig8`).
-9. **2+1D Zamolodchikov Tetrahedron Equation (`classify-tetra2`, `tetra4`)**: Exhaustive $S_8$ (`40,320`) `|X|=2` classification (`total=26`, `nl=2`, `noninvol_nl=0`, plus `toffoli3_satisfies_tetra2`) and nonlinear non-involutive 3-channel-coupled `|X|=4` 6-bit (`BitVec 12`) tetrahedron discovery over all 4,096 states.
+9. **2+1D Zamolodchikov Tetrahedron Equation (`classify-tetra2`, `tetra4`)**: Exhaustive $S_8$ (`40,320`) `|X|=2` classification (`total=26`, `nonlinear=2`, `noninvol_nl=0`, plus `toffoli3_satisfies_tetra2`) and nonlinear non-involutive 3-channel-coupled `|X|=4` 6-bit (`BitVec 12`) tetrahedron discovery over all 4,096 states.
 10. **Canonical Quantum-Linear `.fir` & Cross-Ecosystem Projection**: Synthesizes 4-bit and 6-bit reversible gates into unitary-admissible `FLOW_IR_MULT_LINEAR` (`is_classical = 0`, `FLOW_IR_FLAG_CLEAN`) `.fir` circuits via `searu_solve_mc_gf2` + ANF monomial fallback, verified through `QUA` (`qcc opt` + `qcc verify`) and `ELE` (`ele_bootstrap --fir-synth --gds-out --verify-fir` on `pdk_sky130.flow`), plus balanced `< mid#W` Lean 4 proof emission (`0 sorryAx`).
+11. **Universal $\text{AME}(4,4)$ Affine Rigidity No-Go (`classify-ame4`, `ame4-nogo`)**: Proves unconditionally in Lean 4 (`ame4_affine_rigidity_nogo`) that every 2-unitary permutation on `BitVec 4` (`is2Unitary4Lut`) is forced `GF(2)`-affine (`isAffine4Lut`), verified exhaustively across all `576` `4×4` Latin squares (`total_ols = 6912`, `affine_ols = 6912`, `nonlin_ols = 0`, `bernoulli_ols = 6912`).
+12. **3+1D 4-Simplex Equation (`simplex4`)**: Classifies `|X|=2` (`ccx02_4` and `ccx13_4` satisfy across all `1,024` states while `cccx1_4` fails at `0x3DF#10` with `72` violations) and certifies non-involutive (`order=4`, `anf_deg=3`) ring-lift `s4RingLift` + 4-channel-coupled `s4Coupled4Ch` across all `1,048,576` states (`BitVec 20`, `viol4=0`), plus 4-bit quantum-linear `ccx02` `.fir` (`and=1`).
+13. **Octahedral Quandle $Q_6$ $\mathbb{Z}_4$ 2-Cocycle & Trefoil Chirality (`chiral6`)**: Pure-GPR streaming $\mathbb{Z}/4\mathbb{Z}$ RREF over $Q_6$ (`cocycle_rank=30`), proving YBE, R1, $\mathbb{Z}_4$ 2-cocycle condition, non-coboundary via `coboundary_vanishes_torus2k`, and chiral state-sum separation distinguishing Left Trefoil $3_1$ (`[6, 24, 0, 0]`) from Right Trefoil $\overline{3_1}$ (`[6, 0, 0, 24]`), vs Unknot (`[6, 0, 0, 0]`), Hopf (`[6, 0, 6, 0]`), and Figure-8 (`[6, 0, 0, 0]`).
+14. **Exact $\mathbb{Z}[i]$ Quantum Dual-Unitary, Quantum Scar & Period-2 DTC (`qscar`)**: Exact Gaussian integer (`GaussInt`) proofs of `wCxDU` unitarity (`G†G = 4I`), dual-unitarity, full superposition, `scarGate4` unitarity, and infinite-$L$ Néel $\mathbb{Z}_2$ protection (`dtc_neel_local_protected`, `dtc_neel_exact_period2`), plus exact `L=6` dynamics: DU brick-wall half-chain purity `1/8` at `t=2`, Néel `|010101⟩` period-`2` scar return (`sup=[1,1,1,1]`), and single-defect `|010111⟩` thermalization (`therm_t4 = 2267605875/8589934592 < 1/3`).
+15. **Fracton Universal Involution, Dipole-Carrier Toffoli & $L=6,7,8$ HSF Scaling (`fracton-comp`)**: Proves `fracton3_universal_involution`, `dipole_static_control_nogo` (forcing swap `(1,2,1) ↔ (2,0,2)` for reversible 3-site fracton logic), `dipoleToffoli_implements_ccx` (`phy_dipole_toff` 6-bit `.fir`), and exact Strong HSF density collapse across $L=6,7,8$ (`sec=(43, 130, 410)`, `comps=(34, 84, 264)`, `largest=(3, 6, 6)`, `frozen=(28, 61, 184)`).
 
 ## Architecture
 
-- [`Phy/Noether.lean`](Phy/Noether.lean): Pure Lean 4 formal foundations (82 top-level theorems, 0 `sorryAx`), covering brick-wall Floquet bijectivity, 2-site & 4-site telescoping Noether conservation, `|X|=8` non-involutive YBE, Dual-Unitary `Q2` No-Go & mixing, 2-Unitary `Is2Unitary8`, 3-site Fracton $(Q,D)$ conservation & single-charge immobility, irretractable R1 biquandle knot invariants, 2+1D Zamolodchikov tetrahedron equations (`|X|=2` & `|X|=4`), Mersenne-61 congruence, Stein GCD, and `PhyFiber`.
-- [`Phy.lean`](Phy.lean): Pure `Flow.Schema` 512-cell (32 KB, 64-byte aligned) ABI configuration (`img_hdr`, `hunt_stats`, `rules[16]`, `charges[16]`, `currents[128]`, `sim_frames[32]`, `flow_aux[62]`, `q4_meta[16]`, `q4_densities[64]`, `yb8_rules[16]`, `yb8_meta[16]`, `dual4_meta[8]`, `ame8_meta[8]`, `fracton_meta[8]`, `bq8_meta[8]`, `tetra4_meta[8]`, `v3_rules6[16]`, `v3_aux[88]`), verified by `leanchecker Phy` with 0 `memcpy` generated in `build/phy_schema_abi.h`.
+- [`Phy/Noether.lean`](Phy/Noether.lean): Pure Lean 4 formal foundations (123 public top-level theorems, 0 `sorryAx`), covering brick-wall Floquet bijectivity, 2-site & 4-site telescoping Noether conservation, `|X|=8` non-involutive YBE, Dual-Unitary `Q2` No-Go & mixing, 2-Unitary `Is2Unitary8` & universal `AME(4,4)` affine rigidity, 3-site Fracton $(Q,D)$ conservation, single-charge immobility, universal involution & static-control No-Go, irretractable R1 biquandle & $Q_6$ $\mathbb{Z}_4$ chiral cohomology invariants, 2+1D tetrahedron & 3+1D 4-simplex equations, exact $\mathbb{Z}[i]$ dual-unitary / scar DTC proofs, Mersenne-61 congruence, Stein GCD, and `PhyFiber`.
+- [`Phy.lean`](Phy.lean): Pure `Flow.Schema` 512-cell (32 KB, 64-byte aligned) ABI configuration (`img_hdr`, `hunt_stats`, `rules[16]`, `charges[16]`, `currents[128]`, `sim_frames[32]`, `flow_aux[62]`, `q4_meta[16]`, `q4_densities[64]`, `yb8_rules[16]`, `yb8_meta[16]`, `dual4_meta[8]`, `ame8_meta[8]`, `fracton_meta[8]`, `bq8_meta[8]`, `tetra4_meta[8]`, `v3_rules6[16]`, `ame4_nogo`, `simplex4_meta[8]`, `chiral6_meta[4]`, `qscar_meta[4]`, `frac_comp_meta[4]`, `v4_aux[67]`), decoupled from `Phy/Noether.lean` for parallel schema/proof compilation and verified by `leanchecker Phy` with 0 `memcpy` generated in `build/phy_schema_abi.h`.
 - [`include/phy.h`](include/phy.h) & [`src/phy_ring0.c`](src/phy_ring0.c): Freestanding Ring-0 Pure-GPR discovery engine (`0` undef symbols, `0` `udiv`/`sdiv`/FPU/SIMD/indirect calls, `C++20` clean, `clang-tidy` 0 warnings).
-- [`src/phy_cert.h`](src/phy_cert.h) & [`src/phy_cli.c`](src/phy_cli.c): Zero-Lean-runtime host CLI (`0 leanshared`, `0` heap allocators) running 20 built-in self-tests (`T1..T20`), 4-bit & 6-bit quantum-linear `.fir` synthesis/evaluation, and balanced bit-tree `.lean` certificate emission across all 10 hunt modes.
-- [`oracles/verify_noether_oracle.py`](oracles/verify_noether_oracle.py): Independent Python `int` + `fractions.Fraction` L2 oracle checking all 10 discovery modes, exact algebraic invariants, multi-length Floquet / $L=32$ circuit reversibility, `.fir` 16/16 & 64/64 parity, live `lean` + `leanchecker` replay with 0 `sorryAx`, and optional `QUA`/`ELE` projection checks when sibling builds exist.
-- [`tools/phy_sabotage_check.py`](tools/phy_sabotage_check.py): 36-mutant single-fault C17 verification suite across 12 fault categories (`36/36 = 100.0%` killed).
+- [`src/phy_cert.h`](src/phy_cert.h) & [`src/phy_cli.c`](src/phy_cli.c): Zero-Lean-runtime host CLI (`0 leanshared`, `0` heap allocators) running 25 built-in self-tests (`T1..T25`, plus `--fail-fast`), fast-path degree-aware 4-bit & 6-bit quantum-linear `.fir` synthesis/evaluation, and balanced bit-tree `.lean` certificate emission across all 15 hunt modes.
+- [`oracles/verify_noether_oracle.py`](oracles/verify_noether_oracle.py): Parallel multi-process Python `int` + `fractions.Fraction` L2 oracle checking all 15 discovery modes, exact algebraic/quantum invariants, multi-length Floquet / $L=32$ circuit reversibility, $L=6,7,8$ HSF scaling, `.fir` 16/16 & 64/64 parity, live `lean` + `leanchecker` replay + batch `#print axioms` audit (`0 sorryAx`), and parallel `8/8` `QUA`/`ELE` projection checks when sibling builds exist.
+- [`tools/phy_sabotage_check.py`](tools/phy_sabotage_check.py): Parallel 51-mutant single-fault C17 verification suite across 17 fault categories (`51/51 = 100.0%` killed, `0` compile errors), using precompiled clean object linkage and `--fail-fast` execution.
 
 ## Build & Verify
 
 ```sh
-make clean && make verify-all
+make clean && make -j verify-all
 ```
 
 Run standalone hunts & classifiers:
@@ -35,14 +40,20 @@ Run standalone hunts & classifiers:
 ```sh
 ./build/phy selftest
 ./build/phy classify-tetra2
-./build/phy hunt entangled  --seed 2026 --trials 2000  --out-lean build/PhyDiscoveredCert.lean       --out-fir build/discovered_noether.fir    --out-json build/discovered_noether.json
-./build/phy hunt yangbox    --seed 2026 --trials 6000  --out-lean build/PhyDiscoveredYB.lean         --out-fir build/discovered_yb.fir         --out-json build/discovered_yb.json
-./build/phy hunt joint      --seed 2026 --trials 20000 --out-lean build/PhyDiscoveredJoint.lean      --out-fir build/discovered_joint.fir      --out-json build/discovered_joint.json
-./build/phy hunt q4         --seed 2026 --trials 12000 --out-lean build/PhyDiscoveredQ4.lean         --out-fir build/discovered_q4.fir         --out-json build/discovered_q4.json
-./build/phy hunt yb8        --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredYB8.lean        --out-fir build/discovered_yb8.fir        --out-json build/discovered_yb8.json
-./build/phy hunt dual4      --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredDual4.lean      --out-fir build/discovered_dual4.fir      --out-json build/discovered_dual4.json
-./build/phy hunt ame8       --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredAME8.lean       --out-fir build/discovered_ame8.fir       --out-json build/discovered_ame8.json
-./build/phy hunt fracton    --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredFracton.lean    --out-fir build/discovered_fracton.fir    --out-json build/discovered_fracton.json
-./build/phy hunt biquandle8 --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredBiquandle8.lean --out-fir build/discovered_biquandle8.fir --out-json build/discovered_biquandle8.json
-./build/phy hunt tetra4     --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredTetra4.lean     --out-fir build/discovered_tetra4.fir     --out-json build/discovered_tetra4.json
+./build/phy classify-ame4
+./build/phy hunt entangled    --seed 2026 --trials 2000  --out-lean build/PhyDiscoveredCert.lean       --out-fir build/discovered_noether.fir      --out-json build/discovered_noether.json
+./build/phy hunt yangbox      --seed 2026 --trials 6000  --out-lean build/PhyDiscoveredYB.lean         --out-fir build/discovered_yb.fir           --out-json build/discovered_yb.json
+./build/phy hunt joint        --seed 2026 --trials 20000 --out-lean build/PhyDiscoveredJoint.lean      --out-fir build/discovered_joint.fir        --out-json build/discovered_joint.json
+./build/phy hunt q4           --seed 2026 --trials 12000 --out-lean build/PhyDiscoveredQ4.lean         --out-fir build/discovered_q4.fir           --out-json build/discovered_q4.json
+./build/phy hunt yb8          --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredYB8.lean        --out-fir build/discovered_yb8.fir          --out-json build/discovered_yb8.json
+./build/phy hunt dual4        --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredDual4.lean      --out-fir build/discovered_dual4.fir        --out-json build/discovered_dual4.json
+./build/phy hunt ame8         --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredAME8.lean       --out-fir build/discovered_ame8.fir         --out-json build/discovered_ame8.json
+./build/phy hunt fracton      --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredFracton.lean    --out-fir build/discovered_fracton.fir      --out-json build/discovered_fracton.json
+./build/phy hunt biquandle8   --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredBiquandle8.lean --out-fir build/discovered_biquandle8.fir   --out-json build/discovered_biquandle8.json
+./build/phy hunt tetra4       --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredTetra4.lean     --out-fir build/discovered_tetra4.fir       --out-json build/discovered_tetra4.json
+./build/phy hunt ame4-nogo    --seed 2026 --trials 1     --out-lean build/PhyDiscoveredAME4NoGo.lean                                               --out-json build/discovered_ame4_nogo.json
+./build/phy hunt simplex4     --seed 2026 --trials 16    --out-lean build/PhyDiscoveredSimplex4.lean   --out-fir build/discovered_simplex4_ccx.fir --out-json build/discovered_simplex4.json
+./build/phy hunt chiral6      --seed 2026 --trials 1     --out-lean build/PhyDiscoveredChiral6.lean                                                --out-json build/discovered_chiral6.json
+./build/phy hunt qscar        --seed 2026 --trials 1     --out-lean build/PhyDiscoveredQScar.lean                                                  --out-json build/discovered_qscar.json
+./build/phy hunt fracton-comp --seed 2026 --trials 4000  --out-lean build/PhyDiscoveredFracComp.lean   --out-fir build/discovered_fracton_comp.fir --out-json build/discovered_fracton_comp.json
 ```

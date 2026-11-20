@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PHY v3.0.0 — 36-Mutant Single-Fault Sabotage Gate (Gate 6).
-Verifies 100.0% mutation-kill efficacy (36/36 killed, 0 compile errors) across 12 categories:
+PHY v4.0.0 — 51-Mutant Single-Fault Sabotage Gate (Gate 6).
+Verifies 100.0% mutation-kill efficacy (51/51 killed, 0 compile errors) across 17 categories:
   1. hott_fiber_merkle (3)
   2. mersenne61_rref (3)
   3. noether_telescoping (3)
@@ -14,10 +14,16 @@ Verifies 100.0% mutation-kill efficacy (36/36 killed, 0 compile errors) across 1
  10. fracton_hsf (3)
  11. biquandle8_knots (3)
  12. tetrahedron_4 (3)
+ 13. ame4_nogo (3)
+ 14. simplex4_4d (3)
+ 15. chiral6_cohomology (3)
+ 16. qscar_dtc (3)
+ 17. fracton_comp (3)
 """
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import shutil
 import subprocess
@@ -25,7 +31,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 
 def _find_clang() -> Path:
@@ -158,8 +164,8 @@ MUTANTS: List[Mutant] = [
         "M13_yb_sense_inverted",
         "yangbaxter_soliton",
         "src/phy_ring0.c",
-        "if (lhs != rhs) {\n                    ++viol;\n                }",
-        "if (lhs == rhs) {\n                    ++viol;\n                }",
+        "uint16_t rhs = (uint16_t)(((uint32_t)a0 << 4U) | (uint32_t)bc1);\n\n                if (lhs != rhs) {\n                    ++viol;\n                }",
+        "uint16_t rhs = (uint16_t)(((uint32_t)a0 << 4U) | (uint32_t)bc1);\n\n                if (lhs == rhs) {\n                    ++viol;\n                }",
         "Inverts Yang-Baxter equality violation counter",
     ),
     Mutant(
@@ -283,8 +289,8 @@ MUTANTS: List[Mutant] = [
         "M28_fracton_laplacian_sign",
         "fracton_hsf",
         "src/phy_ring0.c",
-        "if ((ob - b) != -(2 * phi) || (oc - c) != phi) {",
-        "if ((ob - b) != -(phi) || (oc - c) != phi) {",
+        "if ((ob - b) != -(2 * phi) || (oc - c) != phi) {\n            lap_ok = false;\n        } else if (phi != 0 && !got_wit) {",
+        "if ((ob - b) != -(phi) || (oc - c) != phi) {\n            lap_ok = false;\n        } else if (phi != 0 && !got_wit) {",
         "Corrupts central (-2) coefficient of 3-site discrete dipole-Laplacian law",
     ),
     Mutant(
@@ -341,8 +347,8 @@ MUTANTS: List[Mutant] = [
         "M35_tetra4_check_inverted",
         "tetrahedron_4",
         "src/phy_ring0.c",
-        "if (l != r) {\n            ++viol;\n        }",
-        "if (l == r) {\n            ++viol;\n        }",
+        "2U, 4U, 5U);\n        if (l != r) {\n            ++viol;\n        }",
+        "2U, 4U, 5U);\n        if (l == r) {\n            ++viol;\n        }",
         "Inverts |X|=4 4096-state tetrahedron identity violation counter",
     ),
     Mutant(
@@ -353,15 +359,147 @@ MUTANTS: List[Mutant] = [
         "p->flags = 0U;\n    p->num_inputs = 1U;\n    p->inputs[0] = 0U;\n    p->vals[0].width = 6U;",
         "Drops FLOW_IR_FLAG_CLEAN unitary admissibility flag from 6-bit quantum-linear .fir",
     ),
+    # 13. ame4_nogo (3)
+    Mutant(
+        "M37_ame4_2unitary_row_bypass",
+        "ame4_nogo",
+        "src/phy_ring0.c",
+        "if (rc_m != UINT32_C(0xF) || rd_m != UINT32_C(0xF) || cc_m != UINT32_C(0xF) ||\n            cd_m != UINT32_C(0xF)) {",
+        "if (rc_m == UINT32_C(0) && rd_m == UINT32_C(0) && cc_m == UINT32_C(0) &&\n            cd_m == UINT32_C(0)) {",
+        "Bypasses row/column orthogonality masks in phy_is_2unitary4",
+    ),
+    Mutant(
+        "M38_ame4_ols_seen_relaxed",
+        "ame4_nogo",
+        "src/phy_ring0.c",
+        "if (seen_mask != UINT32_C(0xFFFF)) {\n                continue;\n            }",
+        "if (seen_mask == UINT32_C(0)) {\n                continue;\n            }",
+        "Accepts non-orthogonal 4x4 Latin square pairs into OLS census",
+    ),
+    Mutant(
+        "M39_ame4_deg_misclassified",
+        "ame4_nogo",
+        "src/phy_ring0.c",
+        "if (deg == 1U) {\n                ++affine_ols;\n            } else {\n                ++nonlin_ols;\n            }",
+        "if (deg == 2U) {\n                ++affine_ols;\n            } else {\n                ++nonlin_ols;\n            }",
+        "Misclassifies GF(2)-affine OLS gates as nonlinear in AME(4,4) rigidity census",
+    ),
+    # 14. simplex4_4d (3)
+    Mutant(
+        "M40_s4_2_ccx_viol_inverted",
+        "simplex4_4d",
+        "src/phy_ring0.c",
+        "if (l != r) {\n            if (!got && out_first_bad != NULL) {",
+        "if (l == r) {\n            if (!got && out_first_bad != NULL) {",
+        "Inverts |X|=2 1024-state 4-simplex equation violation check",
+    ),
+    Mutant(
+        "M41_s4_4_check_inverted",
+        "simplex4_4d",
+        "src/phy_ring0.c",
+        "r = phy_simplex4_apply4(s, r, 6U, 7U, 8U, 9U);\n        if (l != r) {\n            ++viol;\n        }",
+        "r = phy_simplex4_apply4(s, r, 6U, 7U, 8U, 9U);\n        if (l == r) {\n            ++viol;\n        }",
+        "Inverts |X|=4 1048576-state 4-simplex equation violation counter",
+    ),
+    Mutant(
+        "M42_s4_4ch_coupled_forced",
+        "simplex4_4d",
+        "src/phy_ring0.c",
+        "return (c0 && c1 && c2 && c3) ? UINT8_C(1) : UINT8_C(0);",
+        "return (c0 && c1 && c2 && c3) ? UINT8_C(0) : UINT8_C(1);",
+        "Inverts 4-channel coupling detector in phy_check_4ch_coupled4",
+    ),
+    # 15. chiral6_cohomology (3)
+    Mutant(
+        "M43_q6_cocycle_viol_inverted",
+        "chiral6_cohomology",
+        "src/phy_ring0.c",
+        "UINT32_C(3);\n                if (lhs != rhs) {\n                    ++viol;\n                }",
+        "UINT32_C(3);\n                if (lhs == rhs) {\n                    ++viol;\n                }",
+        "Inverts mod-4 2-cocycle equality check over octahedral quandle Q_6",
+    ),
+    Mutant(
+        "M44_q6_neg_braid_sign_flipped",
+        "chiral6_cohomology",
+        "src/phy_ring0.c",
+        "s = (s + (UINT32_C(4) - ((uint32_t)phi[y] & UINT32_C(3)))) & UINT32_C(3);",
+        "s = (s + ((uint32_t)phi[y] & UINT32_C(3))) & UINT32_C(3);",
+        "Flips crossing sign of negative braid T(2,-3) state-sum weight",
+    ),
+    Mutant(
+        "M45_q6_noncobound_forced",
+        "chiral6_cohomology",
+        "src/phy_ring0.c",
+        "out->is_non_coboundary = (out->cocycle_viol == 0U && non_cob) ? UINT8_C(1) : UINT8_C(0);",
+        "out->is_non_coboundary = (out->cocycle_viol == 0U || non_cob) ? UINT8_C(1) : UINT8_C(0);",
+        "Relaxes non-coboundary guard on trivial zero cocycle via OR instead of AND",
+    ),
+    # 16. qscar_dtc (3)
+    Mutant(
+        "M46_qscar_dual_unitary_forced",
+        "qscar_dtc",
+        "src/phy_ring0.c",
+        "if (out_dual != NULL) {\n        *out_dual = dual ? UINT8_C(1) : UINT8_C(0);\n    }",
+        "if (out_dual != NULL) {\n        *out_dual = dual ? UINT8_C(1) : UINT8_C(1);\n    }",
+        "Forces dual-unitary reshuffle check true even on identity matrix",
+    ),
+    Mutant(
+        "M47_qscar_ctrl_inverted",
+        "qscar_dtc",
+        "src/phy_ring0.c",
+        "bool keep = inv_ctrl ? (b0 == b3) : (b0 != b3);",
+        "bool keep = inv_ctrl ? (b0 != b3) : (b0 == b3);",
+        "Inverts projective scar projector kinetic constraint on Floquet circuit",
+    ),
+    Mutant(
+        "M48_qscar_purity_conj_flipped",
+        "qscar_dtc",
+        "src/phy_ring0.c",
+        "mi += im[idx1] * re[idx2] - re[idx1] * im[idx2];",
+        "mi += im[idx1] * re[idx2] + re[idx1] * im[idx2];",
+        "Corrupts complex conjugation sign in Z[i] reduced density matrix purity",
+    ),
+    # 17. fracton_comp (3)
+    Mutant(
+        "M49_fcomp_toff_swap_dropped",
+        "fracton_comp",
+        "src/phy_ring0.c",
+        "t[25] = 34U;\n    t[34] = 25U;",
+        "t[25] = 25U;\n    t[34] = 34U;",
+        "Drops dipole-carrier Toffoli transposition between (1,2,1) and (2,0,2)",
+    ),
+    Mutant(
+        "M50_fcomp_ccx_check_relaxed",
+        "fracton_comp",
+        "src/phy_ring0.c",
+        "uint32_t exp_tgt = tgt ^ (ca & cc);",
+        "uint32_t exp_tgt = tgt ^ (ca | cc);",
+        "Replaces Toffoli AND control logic with OR in dipole-Toffoli verifier",
+    ),
+    Mutant(
+        "M51_fcomp_hsf_strict_inverted",
+        "fracton_comp",
+        "src/phy_ring0.c",
+        "out->scaling_strict = strict ? UINT8_C(1) : UINT8_C(0);",
+        "out->scaling_strict = strict ? UINT8_C(0) : UINT8_C(1);",
+        "Inverts L=6,7,8 strict HSF Krylov-density collapse flag",
+    ),
 ]
 
 
-def compile_and_test(work: Path) -> str:
-    obj = work / "phy_ring0.c.o"
-    bin_p = work / "phy"
-    inc = [f"-I{work / 'include'}", f"-I{BUILD}", f"-I{FLOW_CORE}", f"-I{FLOW_SDK}"]
+def precompile_clean_objects(
+    tmp_path: Path, sources: Dict[str, str]
+) -> Tuple[Path, Path]:
+    clean_ring0_o = tmp_path / "clean_ring0.o"
+    clean_cli_o = tmp_path / "clean_cli.o"
+    ring0_c = tmp_path / "clean_phy_ring0.c"
+    cli_c = tmp_path / "clean_phy_cli.c"
+    cert_h = tmp_path / "phy_cert.h"
+    ring0_c.write_text(sources["src/phy_ring0.c"], encoding="utf-8")
+    cli_c.write_text(sources["src/phy_cli.c"], encoding="utf-8")
+    cert_h.write_text(sources["src/phy_cert.h"], encoding="utf-8")
 
-    c1 = subprocess.run(
+    r1 = subprocess.run(
         [
             str(CLANG),
             "-std=c17",
@@ -375,21 +513,20 @@ def compile_and_test(work: Path) -> str:
             "-Wall",
             "-Wextra",
             "-Werror",
-            inc[0],
-            inc[1],
-            inc[2],
+            f"-I{ROOT / 'include'}",
+            f"-I{BUILD}",
+            f"-I{FLOW_CORE}",
             "-c",
-            str(work / "src" / "phy_ring0.c"),
+            str(ring0_c),
             "-o",
-            str(obj),
+            str(clean_ring0_o),
         ],
         capture_output=True,
         text=True,
+        check=True,
     )
-    if c1.returncode != 0:
-        return "COMPILE_ERR"
-
-    c2 = subprocess.run(
+    _ = r1
+    subprocess.run(
         [
             str(CLANG),
             "-std=c17",
@@ -397,48 +534,144 @@ def compile_and_test(work: Path) -> str:
             "-Wall",
             "-Wextra",
             "-Werror",
-            *inc,
-            str(obj),
-            str(work / "src" / "phy_cli.c"),
+            f"-I{tmp_path}",
+            f"-I{ROOT / 'include'}",
+            f"-I{BUILD}",
+            f"-I{FLOW_CORE}",
+            f"-I{FLOW_SDK}",
+            "-c",
+            str(cli_c),
             "-o",
-            str(bin_p),
+            str(clean_cli_o),
         ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return clean_ring0_o, clean_cli_o
+
+
+def eval_mutant(
+    m: Mutant,
+    tmp_path: Path,
+    sources: Dict[str, str],
+    clean_ring0_o: Path,
+    clean_cli_o: Path,
+) -> str:
+    mdir = tmp_path / m.mid
+    mdir.mkdir(parents=True, exist_ok=True)
+    bin_p = mdir / "phy"
+    mutated = sources[m.relpath].replace(m.target, m.replacement, 1)
+
+    if m.relpath == "src/phy_ring0.c":
+        r0_c = mdir / "phy_ring0.c"
+        r0_o = mdir / "phy_ring0.o"
+        r0_c.write_text(mutated, encoding="utf-8")
+        c1 = subprocess.run(
+            [
+                str(CLANG),
+                "-std=c17",
+                "-O2",
+                "-ffreestanding",
+                "-nostdlib",
+                "-fno-builtin",
+                "-fno-stack-protector",
+                "-fno-jump-tables",
+                "-mgeneral-regs-only",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                f"-I{ROOT / 'include'}",
+                f"-I{BUILD}",
+                f"-I{FLOW_CORE}",
+                "-c",
+                str(r0_c),
+                "-o",
+                str(r0_o),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if c1.returncode != 0:
+            return "COMPILE_ERR"
+        link_objs = [str(r0_o), str(clean_cli_o)]
+    elif m.relpath == "src/phy_cert.h":
+        (mdir / "phy_cert.h").write_text(mutated, encoding="utf-8")
+        cli_c = mdir / "phy_cli.c"
+        cli_o = mdir / "phy_cli.o"
+        cli_c.write_text(sources["src/phy_cli.c"], encoding="utf-8")
+        c1 = subprocess.run(
+            [
+                str(CLANG),
+                "-std=c17",
+                "-O2",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                f"-I{mdir}",
+                f"-I{ROOT / 'include'}",
+                f"-I{BUILD}",
+                f"-I{FLOW_CORE}",
+                f"-I{FLOW_SDK}",
+                "-c",
+                str(cli_c),
+                "-o",
+                str(cli_o),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if c1.returncode != 0:
+            return "COMPILE_ERR"
+        link_objs = [str(clean_ring0_o), str(cli_o)]
+    else:
+        return "COMPILE_ERR"
+
+    c2 = subprocess.run(
+        [str(CLANG), "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", *link_objs, "-o", str(bin_p)],
         capture_output=True,
         text=True,
     )
     if c2.returncode != 0:
         return "COMPILE_ERR"
 
-    run = subprocess.run([str(bin_p), "selftest"], capture_output=True, text=True, timeout=15)
+    run = subprocess.run(
+        [str(bin_p), "selftest", "--fail-fast"], capture_output=True, text=True, timeout=15
+    )
     return "SURVIVED" if run.returncode == 0 else "KILLED"
 
 
 def main() -> int:
-    assert len(MUTANTS) == 36, f"Expected 36 mutants, got {len(MUTANTS)}"
+    assert len(MUTANTS) == 51, f"Expected 51 mutants, got {len(MUTANTS)}"
+    sources: Dict[str, str] = {
+        "src/phy_ring0.c": (ROOT / "src" / "phy_ring0.c").read_text(encoding="utf-8"),
+        "src/phy_cert.h": (ROOT / "src" / "phy_cert.h").read_text(encoding="utf-8"),
+        "src/phy_cli.c": (ROOT / "src" / "phy_cli.c").read_text(encoding="utf-8"),
+    }
     cat_counts = {}
     for m in MUTANTS:
         cat_counts[m.category] = cat_counts.get(m.category, 0) + 1
-        src_text = (ROOT / m.relpath).read_text(encoding="utf-8")
+        src_text = sources[m.relpath]
         cnt = src_text.count(m.target)
         assert cnt == 1, f"Mutant {m.mid}: expected 1 match in {m.relpath}, found {cnt}"
-    assert len(cat_counts) == 12 and all(v == 3 for v in cat_counts.values()), cat_counts
+    assert len(cat_counts) == 17 and all(v == 3 for v in cat_counts.values()), cat_counts
 
     killed = 0
     compile_errors = 0
     survived: List[str] = []
+    workers = min(8, os.cpu_count() or 4)
 
     with tempfile.TemporaryDirectory(prefix="phy_sab_") as tmp:
         tmp_path = Path(tmp)
-        for m in MUTANTS:
-            mdir = tmp_path / m.mid
-            shutil.copytree(ROOT / "include", mdir / "include")
-            shutil.copytree(ROOT / "src", mdir / "src")
-            fpath = mdir / m.relpath
-            orig = fpath.read_text(encoding="utf-8")
-            mutated = orig.replace(m.target, m.replacement, 1)
-            fpath.write_text(mutated, encoding="utf-8")
-
-            status = compile_and_test(mdir)
+        clean_ring0_o, clean_cli_o = precompile_clean_objects(tmp_path, sources)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            statuses = list(
+                pool.map(
+                    lambda m: eval_mutant(m, tmp_path, sources, clean_ring0_o, clean_cli_o),
+                    MUTANTS,
+                )
+            )
+        for m, status in zip(MUTANTS, statuses):
             if status == "KILLED":
                 killed += 1
                 print(f"  [KILLED]   {m.mid:30s} ({m.category})")

@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #define PHY_MAGIC                   UINT32_C(0x50485931) /* "PHY1" */
-#define PHY_VERSION                 UINT32_C(0x00030000) /* v3.0.0 */
+#define PHY_VERSION                 UINT32_C(0x00040000) /* v4.0.0 */
 #define PHY_M61                     UINT64_C(0x1FFFFFFFFFFFFFFF)
 
 #define PHY_RULE_FLAG_VALID         (UINT32_C(1) << 0U)
@@ -64,6 +64,30 @@ extern "C" {
 #define PHY_TETRA4_FLAG_3COUPLED    (UINT32_C(1) << 3U)
 #define PHY_TETRA4_FLAG_NONLINEAR   (UINT32_C(1) << 4U)
 
+#define PHY_S4_FLAG_BIJECTIVE       (UINT32_C(1) << 0U)
+#define PHY_S4_FLAG_4SIMPLEX        (UINT32_C(1) << 1U)
+#define PHY_S4_FLAG_NONINVOL        (UINT32_C(1) << 2U)
+#define PHY_S4_FLAG_4COUPLED        (UINT32_C(1) << 3U)
+#define PHY_S4_FLAG_NONLINEAR       (UINT32_C(1) << 4U)
+
+#define PHY_CHIRAL6_FLAG_YBE        (UINT32_C(1) << 0U)
+#define PHY_CHIRAL6_FLAG_R1         (UINT32_C(1) << 1U)
+#define PHY_CHIRAL6_FLAG_COCYCLE    (UINT32_C(1) << 2U)
+#define PHY_CHIRAL6_FLAG_CHIRAL     (UINT32_C(1) << 3U)
+#define PHY_CHIRAL6_FLAG_NONCOBOUND (UINT32_C(1) << 4U)
+
+#define PHY_QSCAR_FLAG_UNITARY      (UINT32_C(1) << 0U)
+#define PHY_QSCAR_FLAG_DUAL         (UINT32_C(1) << 1U)
+#define PHY_QSCAR_FLAG_FULL_SUP     (UINT32_C(1) << 2U)
+#define PHY_QSCAR_FLAG_DTC_P2       (UINT32_C(1) << 3U)
+#define PHY_QSCAR_FLAG_THERMAL      (UINT32_C(1) << 4U)
+
+#define PHY_FCOMP_FLAG_BIJECTIVE    (UINT32_C(1) << 0U)
+#define PHY_FCOMP_FLAG_INVOLUTIVE   (UINT32_C(1) << 1U)
+#define PHY_FCOMP_FLAG_LAPLACIAN    (UINT32_C(1) << 2U)
+#define PHY_FCOMP_FLAG_CCX          (UINT32_C(1) << 3U)
+#define PHY_FCOMP_FLAG_SCALING      (UINT32_C(1) << 4U)
+
 #define PHY_HUNT_ENTANGLED          UINT32_C(0)
 #define PHY_HUNT_YANGBOX            UINT32_C(1)
 #define PHY_HUNT_JOINT              UINT32_C(2)
@@ -74,6 +98,11 @@ extern "C" {
 #define PHY_HUNT_FRACTON            UINT32_C(7)
 #define PHY_HUNT_BIQUANDLE8         UINT32_C(8)
 #define PHY_HUNT_TETRA4             UINT32_C(9)
+#define PHY_HUNT_SIMPLEX4           UINT32_C(10)
+#define PHY_HUNT_CHIRAL6            UINT32_C(11)
+#define PHY_HUNT_QSCAR              UINT32_C(12)
+#define PHY_HUNT_FRACTON_COMP       UINT32_C(13)
+#define PHY_HUNT_AME4_NOGO          UINT32_C(14)
 
 typedef struct {
     uint8_t p[16];
@@ -323,6 +352,112 @@ typedef struct {
     uint8_t c2_c1;
 } phy_tetra4_analysis_t;
 
+/* --- PHY v4.0 Analysis Types --- */
+
+typedef struct {
+    uint8_t sample_p[16];
+    uint64_t sample_lut;
+    uint64_t merkle;
+    uint32_t latin4_count;
+    uint32_t total_ols;
+    uint32_t affine_ols;
+    uint32_t nonlin_ols;
+    uint32_t bernoulli_ols;
+} phy_ame4_nogo_t;
+
+typedef struct {
+    uint8_t ccx02[16];
+    uint8_t ccx13[16];
+    uint8_t cccx1[16];
+    uint16_t viol2_ccx02;
+    uint16_t viol2_ccx13;
+    uint16_t viol2_cccx1;
+    uint16_t cccx1_wit_s;
+    uint8_t nl_count_b_ctrl;
+} phy_simplex4_2_t;
+
+typedef struct {
+    uint8_t s[256];
+    uint8_t sinv[256];
+    uint8_t s_coupled[256];
+    uint8_t ccx02[16];
+    uint64_t merkle;
+    uint32_t flags;
+    uint32_t viol4;
+    uint32_t viol4_coupled;
+    uint32_t order4;
+    uint16_t viol2_ccx;
+    uint16_t viol2_cccx;
+    uint8_t anf_deg;
+    uint8_t is_bijective;
+    uint8_t is_involutive;
+    uint8_t is_4coupled;
+    uint8_t noninvol_u;
+} phy_simplex4_4_t;
+
+typedef struct {
+    uint8_t act[6][6];
+    uint8_t r[36];
+    uint8_t rinv[36];
+    uint8_t phi[36];
+    uint64_t merkle;
+    uint32_t flags;
+    uint16_t cocycle_viol;
+    uint16_t cocycle_rank;
+    uint16_t unknot_w[4];
+    uint16_t hopf_w[4];
+    uint16_t tref_l_w[4];
+    uint16_t tref_r_w[4];
+    uint16_t fig8_w[4];
+    uint8_t is_chiral;
+    uint8_t is_non_coboundary;
+    uint8_t wit_a;
+    uint8_t wit_b;
+} phy_chiral6_analysis_t;
+
+typedef struct {
+    int8_t w_re[4][4];
+    int8_t w_im[4][4];
+    uint64_t merkle;
+    uint64_t du_purity_num[4];
+    uint64_t du_purity_den[4];
+    uint64_t therm_purity_num[4];
+    uint64_t therm_purity_den[4];
+    uint64_t neel_ret_num[4];
+    uint64_t neel_ret_den[4];
+    uint32_t flags;
+    uint16_t du_sup[4];
+    uint16_t neel_sup[4];
+    uint16_t therm_sup[4];
+    uint16_t scar_period;
+    uint8_t du_unitary;
+    uint8_t du_dual;
+    uint8_t du_full_sup;
+    uint8_t scar_unitary;
+} phy_qscar_analysis_t;
+
+typedef struct {
+    uint8_t vis[65536];
+    uint32_t queue[2048];
+    uint32_t sec_states[2048];
+} phy_fracton_scale_ws_t;
+
+typedef struct {
+    uint8_t t_sample[64];
+    uint8_t t_toff[64];
+    uint8_t t_toff_inv[64];
+    uint64_t merkle;
+    uint32_t flags;
+    uint16_t sec[3];
+    uint16_t comps[3];
+    uint16_t largest[3];
+    uint16_t frozen[3];
+    uint8_t is_involutive;
+    uint8_t ccx_ok;
+    uint8_t laplacian_ok;
+    uint8_t scaling_strict;
+} phy_fracton_comp_t;
+
 uint64_t phy_fnv1a64_u64(uint64_t h, uint64_t v);
 uint64_t phy_m61_add(uint64_t a, uint64_t b);
 uint64_t phy_m61_sub(uint64_t a, uint64_t b);
@@ -389,6 +524,34 @@ uint16_t phy_tetra4_check(const uint8_t t[64]);
 void phy_analyze_tetra4(const uint8_t t[64], phy_tetra4_analysis_t *out);
 uint32_t phy_hunt_tetra4(phy_arena_u *arena, uint64_t seed, uint64_t max_trials,
                          phy_tetra4_analysis_t *out_best);
+
+/* --- PHY v4.0: Exact Rigidity, 3+1D 4-Simplex, Chiral Cohomology, Z[i] Scar, Fracton Univ --- */
+
+bool phy_is_2unitary4(const uint8_t p[16]);
+void phy_classify_ame4(phy_arena_u *arena, phy_ame4_nogo_t *out);
+
+uint16_t phy_simplex4_check2(const uint8_t s[16], uint16_t *out_first_bad);
+void phy_analyze_simplex4_2(phy_simplex4_2_t *out);
+uint32_t phy_simplex4_check4(const uint8_t s[256]);
+void phy_analyze_simplex4_4(const uint8_t s[256], phy_simplex4_4_t *out);
+uint32_t phy_hunt_simplex4(phy_arena_u *arena, uint64_t seed, uint64_t max_trials,
+                           phy_simplex4_4_t *out_best);
+
+uint16_t phy_verify_q6_cocycle(const uint8_t r[36], const uint8_t phi[36]);
+void phy_analyze_chiral6_custom(const uint8_t act[6][6], const uint8_t phi_in[36],
+                                phy_chiral6_analysis_t *out);
+uint32_t phy_solve_chiral6(phy_arena_u *arena, phy_chiral6_analysis_t *out);
+
+void phy_verify_zi_du4(const int8_t re[4][4], const int8_t im[4][4], uint8_t *out_unitary,
+                       uint8_t *out_dual, uint8_t *out_full_sup);
+uint32_t phy_analyze_qscar_custom(phy_arena_u *arena, const int8_t re[4][4], const int8_t im[4][4],
+                                  bool invert_scar_ctrl, phy_qscar_analysis_t *out);
+uint32_t phy_analyze_qscar(phy_arena_u *arena, phy_qscar_analysis_t *out);
+
+void phy_build_dipole_toffoli(uint8_t t[64]);
+uint32_t phy_analyze_fracton_comp(phy_arena_u *arena, const uint8_t t_sample[64],
+                                  const uint8_t t_toff[64], phy_fracton_scale_ws_t *ws,
+                                  phy_fracton_comp_t *out);
 
 #ifdef __cplusplus
 }
