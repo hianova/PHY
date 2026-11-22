@@ -6,17 +6,8 @@ namespace Phy
 open Flow.Schema
 
 def hdrLayout : CellLayout64 :=
-  CellLayout64.packed64 "PhyHdrCell" "phy_hdr_cell_t" "hdr"
-    [ ("magic", .u32, 1)
-    , ("version", .u32, 1)
-    , ("total_cells", .u32, 1)
-    , ("active_rules", .u32, 1)
-    , ("merkle_root", .u64, 1)
-    , ("seed", .u64, 1)
-    , ("flags", .u64, 1)
-    , ("reserved", .u64, 1)
-    , ("pad", .u64, 2)
-    ]
+  CellLayout64.stdHeader64 "PhyHdrCell" "phy_hdr_cell_t" "active_rules"
+    ["merkle_root", "seed", "flags", "reserved"]
 
 def huntStatsLayout : CellLayout64 :=
   CellLayout64.packed64 "PhyHuntStatsCell" "phy_hunt_stats_t" "stats"

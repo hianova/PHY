@@ -1,8 +1,7 @@
 #ifndef PHY_CERT_H
 #define PHY_CERT_H
 
-#include "flow_ir.h"
-#include "flow_ir_wire.h"
+#include "flow_ir_builder.h"
 #include "phy.h"
 #include "searu_mc_gf2.h"
 #include <stdio.h>
@@ -23,62 +22,17 @@ typedef struct {
 } phy_fir_cert_ws_t;
 
 static inline uint32_t phy_cert_emit_const(flow_ir_prog_t *p, uint64_t val, const char *name) {
-    if (p->num_vals >= FLOW_IR_MAX_VALS || p->num_ops >= FLOW_IR_MAX_OPS) {
-        return UINT32_MAX;
-    }
-    uint32_t vid = p->num_vals;
-    uint32_t opid = p->num_ops;
-    p->vals[vid].width = 1U;
-    p->vals[vid].is_classical = 0U;
-    snprintf(p->vals[vid].name, sizeof(p->vals[vid].name), "%s", name);
-    p->ops[opid].kind = FLOW_IR_OP_CONST_U64;
-    p->ops[opid].num_ins = 0U;
-    p->ops[opid].out_val = vid;
-    p->ops[opid].p0 = val;
-    p->num_vals++;
-    p->num_ops++;
-    return vid;
+    return flow_ir_emit_const(p, 1U, val, name);
 }
 
 static inline uint32_t phy_cert_emit_slice(flow_ir_prog_t *p, uint32_t src_val, uint32_t bit,
                                            const char *name) {
-    if (p->num_vals >= FLOW_IR_MAX_VALS || p->num_ops >= FLOW_IR_MAX_OPS || src_val == UINT32_MAX) {
-        return UINT32_MAX;
-    }
-    uint32_t vid = p->num_vals;
-    uint32_t opid = p->num_ops;
-    p->vals[vid].width = 1U;
-    p->vals[vid].is_classical = 0U;
-    snprintf(p->vals[vid].name, sizeof(p->vals[vid].name), "%s", name);
-    p->ops[opid].kind = FLOW_IR_OP_SLICE;
-    p->ops[opid].num_ins = 1U;
-    p->ops[opid].out_val = vid;
-    p->ops[opid].ins[0] = src_val;
-    p->ops[opid].p0 = (uint64_t)bit;
-    p->num_vals++;
-    p->num_ops++;
-    return vid;
+    return flow_ir_emit_op1(p, FLOW_IR_OP_SLICE, 1U, src_val, (uint64_t)bit, name);
 }
 
 static inline uint32_t phy_cert_emit_binop(flow_ir_prog_t *p, uint16_t kind, uint32_t lhs,
                                            uint32_t rhs, const char *name) {
-    if (p->num_vals >= FLOW_IR_MAX_VALS || p->num_ops >= FLOW_IR_MAX_OPS || lhs == UINT32_MAX ||
-        rhs == UINT32_MAX) {
-        return UINT32_MAX;
-    }
-    uint32_t vid = p->num_vals;
-    uint32_t opid = p->num_ops;
-    p->vals[vid].width = 1U;
-    p->vals[vid].is_classical = 0U;
-    snprintf(p->vals[vid].name, sizeof(p->vals[vid].name), "%s", name);
-    p->ops[opid].kind = kind;
-    p->ops[opid].num_ins = 2U;
-    p->ops[opid].out_val = vid;
-    p->ops[opid].ins[0] = lhs;
-    p->ops[opid].ins[1] = rhs;
-    p->num_vals++;
-    p->num_ops++;
-    return vid;
+    return flow_ir_emit_op2(p, kind, 1U, lhs, rhs, name);
 }
 
 static inline uint32_t phy_cert_emit_xor_mask(flow_ir_prog_t *p, const uint32_t *basis_vals,

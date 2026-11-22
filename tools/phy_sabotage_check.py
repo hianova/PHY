@@ -23,42 +23,43 @@ Verifies 100.0% mutation-kill efficacy (51/51 killed, 0 compile errors) across 1
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
-import shutil
-import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
-
-
-def _find_clang() -> Path:
-    for candidate in (os.environ.get("CC"), "/opt/homebrew/opt/llvm/bin/clang", shutil.which("clang")):
-        if candidate and Path(candidate).exists():
-            return Path(candidate)
-    return Path("/opt/homebrew/opt/llvm/bin/clang")
+from typing import List
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD = ROOT / "build"
-FLOW_CORE = ROOT.parent / "FLOW" / "core"
-FLOW_SDK = ROOT.parent / "FLOW" / "sdk"
-CLANG = _find_clang()
+FLOW_TOOLS_DIR = (
+    Path(os.environ.get("FLOW_DIR", str(ROOT.parent / "FLOW"))).resolve()
+    / "sdk"
+    / "tools"
+)
+if str(FLOW_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(FLOW_TOOLS_DIR))
+
+from flow_sabotage_runner import FlowMutant, run_multifile_sabotage_suite
 
 
-@dataclass(frozen=True)
-class Mutant:
-    mid: str
-    category: str
-    relpath: str
-    target: str
-    replacement: str
-    reason: str
+def Mutant(
+    mid: str,
+    category: str,
+    relpath: str,
+    target: str,
+    replacement: str,
+    reason: str = "",
+) -> FlowMutant:
+    return FlowMutant(
+        name=mid,
+        category=category,
+        target=target,
+        replacement=replacement,
+        relpath=relpath,
+        reason=reason,
+    )
 
 
-MUTANTS: List[Mutant] = [
+MUTANTS: List[FlowMutant] = [
     # 1. hott_fiber_merkle (3)
     Mutant(
         "M01_fnv1a_prime_zero",
@@ -487,209 +488,21 @@ MUTANTS: List[Mutant] = [
 ]
 
 
-def precompile_clean_objects(
-    tmp_path: Path, sources: Dict[str, str]
-) -> Tuple[Path, Path]:
-    clean_ring0_o = tmp_path / "clean_ring0.o"
-    clean_cli_o = tmp_path / "clean_cli.o"
-    ring0_c = tmp_path / "clean_phy_ring0.c"
-    cli_c = tmp_path / "clean_phy_cli.c"
-    cert_h = tmp_path / "phy_cert.h"
-    ring0_c.write_text(sources["src/phy_ring0.c"], encoding="utf-8")
-    cli_c.write_text(sources["src/phy_cli.c"], encoding="utf-8")
-    cert_h.write_text(sources["src/phy_cert.h"], encoding="utf-8")
-
-    r1 = subprocess.run(
-        [
-            str(CLANG),
-            "-std=c17",
-            "-O2",
-            "-ffreestanding",
-            "-nostdlib",
-            "-fno-builtin",
-            "-fno-stack-protector",
-            "-fno-jump-tables",
-            "-mgeneral-regs-only",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            f"-I{ROOT / 'include'}",
-            f"-I{BUILD}",
-            f"-I{FLOW_CORE}",
-            "-c",
-            str(ring0_c),
-            "-o",
-            str(clean_ring0_o),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    _ = r1
-    subprocess.run(
-        [
-            str(CLANG),
-            "-std=c17",
-            "-O2",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            f"-I{tmp_path}",
-            f"-I{ROOT / 'include'}",
-            f"-I{BUILD}",
-            f"-I{FLOW_CORE}",
-            f"-I{FLOW_SDK}",
-            "-c",
-            str(cli_c),
-            "-o",
-            str(clean_cli_o),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return clean_ring0_o, clean_cli_o
-
-
-def eval_mutant(
-    m: Mutant,
-    tmp_path: Path,
-    sources: Dict[str, str],
-    clean_ring0_o: Path,
-    clean_cli_o: Path,
-) -> str:
-    mdir = tmp_path / m.mid
-    mdir.mkdir(parents=True, exist_ok=True)
-    bin_p = mdir / "phy"
-    mutated = sources[m.relpath].replace(m.target, m.replacement, 1)
-
-    if m.relpath == "src/phy_ring0.c":
-        r0_c = mdir / "phy_ring0.c"
-        r0_o = mdir / "phy_ring0.o"
-        r0_c.write_text(mutated, encoding="utf-8")
-        c1 = subprocess.run(
-            [
-                str(CLANG),
-                "-std=c17",
-                "-O2",
-                "-ffreestanding",
-                "-nostdlib",
-                "-fno-builtin",
-                "-fno-stack-protector",
-                "-fno-jump-tables",
-                "-mgeneral-regs-only",
-                "-Wall",
-                "-Wextra",
-                "-Werror",
-                f"-I{ROOT / 'include'}",
-                f"-I{BUILD}",
-                f"-I{FLOW_CORE}",
-                "-c",
-                str(r0_c),
-                "-o",
-                str(r0_o),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if c1.returncode != 0:
-            return "COMPILE_ERR"
-        link_objs = [str(r0_o), str(clean_cli_o)]
-    elif m.relpath == "src/phy_cert.h":
-        (mdir / "phy_cert.h").write_text(mutated, encoding="utf-8")
-        cli_c = mdir / "phy_cli.c"
-        cli_o = mdir / "phy_cli.o"
-        cli_c.write_text(sources["src/phy_cli.c"], encoding="utf-8")
-        c1 = subprocess.run(
-            [
-                str(CLANG),
-                "-std=c17",
-                "-O2",
-                "-Wall",
-                "-Wextra",
-                "-Werror",
-                f"-I{mdir}",
-                f"-I{ROOT / 'include'}",
-                f"-I{BUILD}",
-                f"-I{FLOW_CORE}",
-                f"-I{FLOW_SDK}",
-                "-c",
-                str(cli_c),
-                "-o",
-                str(cli_o),
-            ],
-            capture_output=True,
-            text=True,
-        )
-        if c1.returncode != 0:
-            return "COMPILE_ERR"
-        link_objs = [str(clean_ring0_o), str(cli_o)]
-    else:
-        return "COMPILE_ERR"
-
-    c2 = subprocess.run(
-        [str(CLANG), "-std=c17", "-O2", "-Wall", "-Wextra", "-Werror", *link_objs, "-o", str(bin_p)],
-        capture_output=True,
-        text=True,
-    )
-    if c2.returncode != 0:
-        return "COMPILE_ERR"
-
-    run = subprocess.run(
-        [str(bin_p), "selftest", "--fail-fast"], capture_output=True, text=True, timeout=15
-    )
-    return "SURVIVED" if run.returncode == 0 else "KILLED"
-
-
 def main() -> int:
     assert len(MUTANTS) == 51, f"Expected 51 mutants, got {len(MUTANTS)}"
-    sources: Dict[str, str] = {
-        "src/phy_ring0.c": (ROOT / "src" / "phy_ring0.c").read_text(encoding="utf-8"),
-        "src/phy_cert.h": (ROOT / "src" / "phy_cert.h").read_text(encoding="utf-8"),
-        "src/phy_cli.c": (ROOT / "src" / "phy_cli.c").read_text(encoding="utf-8"),
-    }
-    cat_counts = {}
+    cat_counts: dict[str, int] = {}
     for m in MUTANTS:
         cat_counts[m.category] = cat_counts.get(m.category, 0) + 1
-        src_text = sources[m.relpath]
-        cnt = src_text.count(m.target)
-        assert cnt == 1, f"Mutant {m.mid}: expected 1 match in {m.relpath}, found {cnt}"
     assert len(cat_counts) == 17 and all(v == 3 for v in cat_counts.values()), cat_counts
 
-    killed = 0
-    compile_errors = 0
-    survived: List[str] = []
-    workers = min(8, os.cpu_count() or 4)
-
-    with tempfile.TemporaryDirectory(prefix="phy_sab_") as tmp:
-        tmp_path = Path(tmp)
-        clean_ring0_o, clean_cli_o = precompile_clean_objects(tmp_path, sources)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
-            statuses = list(
-                pool.map(
-                    lambda m: eval_mutant(m, tmp_path, sources, clean_ring0_o, clean_cli_o),
-                    MUTANTS,
-                )
-            )
-        for m, status in zip(MUTANTS, statuses):
-            if status == "KILLED":
-                killed += 1
-                print(f"  [KILLED]   {m.mid:30s} ({m.category})")
-            elif status == "COMPILE_ERR":
-                compile_errors += 1
-                print(f"  [COMP_ERR] {m.mid:30s} ({m.category})")
-            else:
-                survived.append(m.mid)
-                print(f"  [SURVIVED] {m.mid:30s} ({m.category}) -- {m.reason}")
-
-    pct = (100.0 * killed) / len(MUTANTS)
-    print(
-        f"SABOTAGE SUMMARY: killed={killed}/{len(MUTANTS)} ({pct:.1f}%), "
-        f"compile_errors={compile_errors}, survived={len(survived)}"
+    return run_multifile_sabotage_suite(
+        repo_root=ROOT,
+        ring0_rel="src/phy_ring0.c",
+        cli_rel="src/phy_cli.c",
+        extra_header_rels=("src/phy_cert.h",),
+        mutants=MUTANTS,
+        prefix="phy_sab_",
     )
-    if compile_errors > 0 or killed != len(MUTANTS):
-        return 1
-    return 0
 
 
 if __name__ == "__main__":

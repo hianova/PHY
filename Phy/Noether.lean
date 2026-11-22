@@ -1,3 +1,4 @@
+import Flow.FiniteSum
 import Std.Tactic.BVDecide
 
 namespace Phy.Noether
@@ -54,32 +55,19 @@ theorem swap2_bijective : Bijective swap2 := by
 
 /-! ## Section 2: Brick-Wall Even/Odd Staggered Layers & Exact Reversibility -/
 
-def prevMod {N : Nat} (hN : 0 < N) (i : Fin N) : Fin N :=
-  ⟨(i.val + N - 1) % N, Nat.mod_lt _ hN⟩
+abbrev prevMod {N : Nat} (hN : 0 < N) (i : Fin N) : Fin N :=
+  Flow.FiniteSum.prevIdx hN i
 
-def nextMod {N : Nat} (hN : 0 < N) (i : Fin N) : Fin N :=
-  ⟨(i.val + 1) % N, Nat.mod_lt _ hN⟩
+abbrev nextMod {N : Nat} (hN : 0 < N) (i : Fin N) : Fin N :=
+  Flow.FiniteSum.nextIdx hN i
 
 theorem nextMod_prevMod {N : Nat} (hN : 0 < N) (i : Fin N) :
-    nextMod hN (prevMod hN i) = i := by
-  ext
-  simp only [nextMod, prevMod]
-  have hi : i.val < N := i.isLt
-  have heq : (i.val + N - 1) % N + 1 = (i.val + (N - 1)) % N + 1 := by
-    congr 2; omega
-  rw [heq, Nat.mod_add_mod]
-  have hsum : i.val + (N - 1) + 1 = i.val + N := by omega
-  rw [hsum, Nat.add_mod_right, Nat.mod_eq_of_lt hi]
+    nextMod hN (prevMod hN i) = i :=
+  Flow.FiniteSum.nextIdx_prevIdx hN i
 
 theorem prevMod_nextMod {N : Nat} (hN : 0 < N) (i : Fin N) :
-    prevMod hN (nextMod hN i) = i := by
-  ext
-  simp only [prevMod, nextMod]
-  have hi : i.val < N := i.isLt
-  have heq : (i.val + 1) % N + N - 1 = (i.val + 1) % N + (N - 1) := by omega
-  rw [heq, Nat.mod_add_mod]
-  have hsum : i.val + 1 + (N - 1) = i.val + N := by omega
-  rw [hsum, Nat.add_mod_right, Nat.mod_eq_of_lt hi]
+    prevMod hN (nextMod hN i) = i :=
+  Flow.FiniteSum.prevIdx_nextIdx hN i
 
 def evenLayer {N : Nat} (P : BitVec 4 → BitVec 4) (u : Fin N → BitVec 4) :
     Fin N → BitVec 4 :=
@@ -156,87 +144,35 @@ theorem floquetRing_vacuum_invariant {N : Nat} (hN : 0 < N) (P : BitVec 4 → Bi
 
 /-! ## Section 3: Exact Finite Ring Sums, Telescoping & Discrete Noether Conservation -/
 
-def sumPrefix {N : Nat} (f : Fin N → Int) : Nat → Int
-  | 0 => 0
-  | k + 1 => sumPrefix f k + if h : k < N then f ⟨k, h⟩ else 0
+abbrev sumPrefix {N : Nat} (f : Fin N → Int) : Nat → Int :=
+  Flow.FiniteSum.sumPrefix f
 
-def ringSum (N : Nat) (f : Fin N → Int) : Int :=
-  sumPrefix f N
+abbrev ringSum (N : Nat) (f : Fin N → Int) : Int :=
+  Flow.FiniteSum.sumFin N f
 
 theorem sumPrefix_add {N : Nat} (f g : Fin N → Int) (k : Nat) :
-    sumPrefix (fun i => f i + g i) k = sumPrefix f k + sumPrefix g k := by
-  induction k with
-  | zero => simp [sumPrefix]
-  | succ k ih =>
-    simp only [sumPrefix, ih]
-    split <;> omega
+    sumPrefix (fun i => f i + g i) k = sumPrefix f k + sumPrefix g k :=
+  Flow.FiniteSum.sumPrefix_add f g k
 
 theorem ringSum_add (N : Nat) (f g : Fin N → Int) :
     ringSum N (fun i => f i + g i) = ringSum N f + ringSum N g :=
-  sumPrefix_add f g N
+  Flow.FiniteSum.sumFin_add N f g
 
 theorem sumPrefix_sub {N : Nat} (f g : Fin N → Int) (k : Nat) :
-    sumPrefix (fun i => f i - g i) k = sumPrefix f k - sumPrefix g k := by
-  induction k with
-  | zero => simp [sumPrefix]
-  | succ k ih =>
-    simp only [sumPrefix, ih]
-    split <;> omega
+    sumPrefix (fun i => f i - g i) k = sumPrefix f k - sumPrefix g k :=
+  Flow.FiniteSum.sumPrefix_sub f g k
 
 theorem ringSum_sub (N : Nat) (f g : Fin N → Int) :
     ringSum N (fun i => f i - g i) = ringSum N f - ringSum N g :=
-  sumPrefix_sub f g N
-
-private theorem nextMod_mk_lt {N : Nat} (hN : 0 < N) {k : Nat}
-    (hk : k < N) (hk1 : k + 1 < N) :
-    nextMod hN ⟨k, hk⟩ = ⟨k + 1, hk1⟩ := by
-  ext
-  simp only [nextMod]
-  exact Nat.mod_eq_of_lt hk1
-
-private theorem sumPrefix_shift_aux {N : Nat} (hN : 0 < N) (f : Fin N → Int) :
-    ∀ k : Nat, k < N →
-      sumPrefix (fun i => f (nextMod hN i)) k = sumPrefix f (k + 1) - f ⟨0, hN⟩
-  | 0, _ => by
-    simp only [sumPrefix, hN, ↓reduceDIte]
-    omega
-  | k + 1, hk => by
-    have hkPrev : k < N := Nat.lt_trans (Nat.lt_succ_self k) hk
-    have ih := sumPrefix_shift_aux hN f k hkPrev
-    have hnext : nextMod hN ⟨k, hkPrev⟩ = ⟨k + 1, hk⟩ := nextMod_mk_lt hN hkPrev hk
-    calc sumPrefix (fun i => f (nextMod hN i)) (k + 1)
-        = sumPrefix (fun i => f (nextMod hN i)) k + f (nextMod hN ⟨k, hkPrev⟩) := by
-          simp only [sumPrefix, hkPrev, ↓reduceDIte]
-      _ = (sumPrefix f (k + 1) - f ⟨0, hN⟩) + f ⟨k + 1, hk⟩ := by
-          rw [ih, hnext]
-      _ = sumPrefix f (k + 2) - f ⟨0, hN⟩ := by
-          simp only [sumPrefix, hk, ↓reduceDIte]
-          omega
+  Flow.FiniteSum.sumFin_sub N f g
 
 theorem ringSum_shift_next {N : Nat} (hN : 0 < N) (f : Fin N → Int) :
-    ringSum N (fun i => f (nextMod hN i)) = ringSum N f := by
-  unfold ringSum
-  have hlast : N - 1 < N := Nat.sub_lt hN Nat.zero_lt_one
-  have heqN : N = (N - 1) + 1 := by omega
-  have hwrap : nextMod hN ⟨N - 1, hlast⟩ = ⟨0, hN⟩ := by
-    ext
-    simp only [nextMod]
-    have hsum : (N - 1) + 1 = N := by omega
-    rw [hsum, Nat.mod_self]
-  calc sumPrefix (fun i => f (nextMod hN i)) N
-      = sumPrefix (fun i => f (nextMod hN i)) ((N - 1) + 1) := by rw [← heqN]
-    _ = sumPrefix (fun i => f (nextMod hN i)) (N - 1) + f (nextMod hN ⟨N - 1, hlast⟩) := by
-        simp only [sumPrefix, hlast, ↓reduceDIte]
-    _ = (sumPrefix f ((N - 1) + 1) - f ⟨0, hN⟩) + f ⟨0, hN⟩ := by
-        rw [sumPrefix_shift_aux hN f (N - 1) hlast, hwrap]
-    _ = sumPrefix f N := by
-        rw [← heqN]
-        omega
+    ringSum N (fun i => f (nextMod hN i)) = ringSum N f :=
+  Flow.FiniteSum.sumFin_shift_next hN f
 
 theorem ringSum_telescoping {N : Nat} (hN : 0 < N) (j : Fin N → Int) :
-    ringSum N (fun i => j (nextMod hN i) - j i) = 0 := by
-  rw [ringSum_sub, ringSum_shift_next]
-  omega
+    ringSum N (fun i => j (nextMod hN i) - j i) = 0 :=
+  Flow.FiniteSum.sumFin_telescoping hN j
 
 def SatisfiesContinuity (P : BitVec 4 → BitVec 4) (q : BitVec 4 → Int)
     (j : BitVec 4 → BitVec 4 → Int) : Prop :=
@@ -1242,11 +1178,11 @@ def pointDelta (L idx : Nat) (d : Int) (i : Fin L) : Int :=
 private theorem sumPrefix_pointDelta (L idx : Nat) (d : Int) (hidx : idx < L) :
     ∀ k : Nat, k ≤ L →
       sumPrefix (pointDelta L idx d) k = if idx < k then d else 0
-  | 0, _ => by simp [sumPrefix]
+  | 0, _ => by simp [Flow.FiniteSum.sumPrefix]
   | k + 1, hk => by
     have hkL : k < L := by omega
     have ih := sumPrefix_pointDelta L idx d hidx k (by omega)
-    simp only [sumPrefix, hkL, ↓reduceDIte, pointDelta, ih]
+    simp only [Flow.FiniteSum.sumPrefix, hkL, ↓reduceDIte, pointDelta, ih]
     by_cases heq : k = idx
     · subst heq
       have h1 : ¬ k < k := Nat.lt_irrefl k
@@ -1257,7 +1193,7 @@ private theorem sumPrefix_pointDelta (L idx : Nat) (d : Int) (hidx : idx < L) :
 
 theorem ringSum_pointDelta {L idx : Nat} (hidx : idx < L) (d : Int) :
     ringSum L (pointDelta L idx d) = d := by
-  unfold ringSum
+  change sumPrefix (pointDelta L idx d) L = d
   rw [sumPrefix_pointDelta L idx d hidx L (Nat.le_refl L)]
   simp [hidx]
 
@@ -1383,10 +1319,11 @@ theorem dipole_laplacian_low_charge_fixed (T : BitVec 6 → BitVec 6)
 
 private theorem sumPrefix_nonneg {L : Nat} (f : Fin L → Int) (hf : ∀ i, 0 ≤ f i) :
     ∀ k : Nat, 0 ≤ sumPrefix f k
-  | 0 => by simp [sumPrefix]
+  | 0 => by simp [Flow.FiniteSum.sumPrefix]
   | k + 1 => by
     have ih := sumPrefix_nonneg f hf k
-    simp only [sumPrefix]
+    dsimp only [sumPrefix] at ih ⊢
+    simp only [Flow.FiniteSum.sumPrefix]
     split
     · have := hf ⟨k, by assumption⟩
       omega
@@ -1405,7 +1342,8 @@ private theorem sumPrefix_mono {L : Nat} (f : Fin L → Int) (hf : ∀ i, 0 ≤ 
       exact Int.le_refl _
     · have hmlen : m ≤ n := by omega
       have h1 := ih hmlen
-      simp only [sumPrefix]
+      dsimp only [sumPrefix] at h1 ⊢
+      simp only [Flow.FiniteSum.sumPrefix]
       split
       · have := hf ⟨n, by assumption⟩
         omega
@@ -1425,7 +1363,7 @@ theorem fracton_single_charge_frozen {L : Nat} (T : BitVec 6 → BitVec 6)
   have hstep : sumPrefix (fun i => rho2 (s i)) (pos + 3) =
       sumPrefix (fun i => rho2 (s i)) pos +
         rho2 (s ⟨pos, by omega⟩) + rho2 (s ⟨pos + 1, by omega⟩) + rho2 (s ⟨pos + 2, by omega⟩) := by
-    simp only [sumPrefix, (by omega : pos < L), (by omega : pos + 1 < L),
+    simp only [Flow.FiniteSum.sumPrefix, (by omega : pos < L), (by omega : pos + 1 < L),
                (by omega : pos + 2 < L), ↓reduceDIte]
   have hwin : (s ⟨pos, by omega⟩).toNat + (s ⟨pos + 1, by omega⟩).toNat +
       (s ⟨pos + 2, by omega⟩).toNat ≤ 1 := by

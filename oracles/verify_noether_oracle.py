@@ -42,6 +42,7 @@ def _find_elan_tool(name: str) -> Path:
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
+FLOW_DIR = Path(os.environ.get("FLOW_DIR", str(ROOT.parent / "FLOW"))).resolve()
 PHY_BIN = BUILD / "phy"
 LEAN = _find_elan_tool("lean")
 LEANCHECKER = _find_elan_tool("leanchecker")
@@ -1428,7 +1429,7 @@ def verify_cross_ecosystem_bridge(
 def compile_and_check_lean_cert(lean_path: Path, mod_name: str) -> None:
     olean = BUILD / "lean" / f"{mod_name}.olean"
     env = os.environ.copy()
-    env["LEAN_PATH"] = str(BUILD / "lean")
+    env["LEAN_PATH"] = f"{BUILD / 'lean'}:{FLOW_DIR / 'build' / 'lean'}"
 
     subprocess.run(
         [
@@ -1450,7 +1451,7 @@ def compile_and_check_lean_cert(lean_path: Path, mod_name: str) -> None:
 
 def batch_audit_lean_axioms(certs: List[Tuple[str, List[str]]]) -> None:
     env = os.environ.copy()
-    env["LEAN_PATH"] = str(BUILD / "lean")
+    env["LEAN_PATH"] = f"{BUILD / 'lean'}:{FLOW_DIR / 'build' / 'lean'}"
     imports = "\n".join(f"import {mod_name}" for mod_name, _ in certs)
     axioms = "\n".join(f"#print axioms {t}" for _, targets in certs for t in targets)
     axiom_script = f"{imports}\n{axioms}\n"
