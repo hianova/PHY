@@ -23,7 +23,7 @@
 ## Architecture
 
 - [`Phy/Noether.lean`](Phy/Noether.lean): Pure Lean 4 formal foundations (123 public top-level theorems, 0 `sorryAx`), covering brick-wall Floquet bijectivity, 2-site & 4-site telescoping Noether conservation, `|X|=8` non-involutive YBE, Dual-Unitary `Q2` No-Go & mixing, 2-Unitary `Is2Unitary8` & universal `AME(4,4)` affine rigidity, 3-site Fracton $(Q,D)$ conservation, single-charge immobility, universal involution & static-control No-Go, irretractable R1 biquandle & $Q_6$ $\mathbb{Z}_4$ chiral cohomology invariants, 2+1D tetrahedron & 3+1D 4-simplex equations, exact $\mathbb{Z}[i]$ dual-unitary / scar DTC proofs, Mersenne-61 congruence, Stein GCD, and `PhyFiber`.
-- [`Phy.lean`](Phy.lean): Pure `Flow.Schema` 512-cell (32 KB, 64-byte aligned) ABI configuration (`img_hdr`, `hunt_stats`, `rules[16]`, `charges[16]`, `currents[128]`, `sim_frames[32]`, `flow_aux[62]`, `q4_meta[16]`, `q4_densities[64]`, `yb8_rules[16]`, `yb8_meta[16]`, `dual4_meta[8]`, `ame8_meta[8]`, `fracton_meta[8]`, `bq8_meta[8]`, `tetra4_meta[8]`, `v3_rules6[16]`, `ame4_nogo`, `simplex4_meta[8]`, `chiral6_meta[4]`, `qscar_meta[4]`, `frac_comp_meta[4]`, `v4_aux[67]`), decoupled from `Phy/Noether.lean` for parallel schema/proof compilation and verified by `leanchecker Phy` with 0 `memcpy` generated in `build/phy_schema_abi.h`.
+- [`phy_schema.fspec`](phy_schema.fspec) & [`Phy.lean`](Phy.lean): Primary Lean-free 512-cell (32 KB, 64-byte aligned, 21 layouts, 23 regions) schema source compiled directly by `FLOW v10.0.0` (`flow schema emit c17/smt2/lean`) so `make all LEAN=false` builds `build/phy_schema_abi.h` and `build/phy` with zero Lean dependency; [`Phy.lean`](Phy.lean) remains intact for bit-exact `PHY_SCHEMA_HASH` (`0xECEFEA5E4EFE799A`) parity, Z3 `QF_LIA` `unsat` bounds/disjointness verification, and `leanchecker Phy` verification in `gate1-lean-schema`.
 - [`include/phy.h`](include/phy.h) & [`src/phy_ring0.c`](src/phy_ring0.c): Freestanding Ring-0 Pure-GPR discovery engine (`0` undef symbols, `0` `udiv`/`sdiv`/FPU/SIMD/indirect calls, `C++20` clean, `clang-tidy` 0 warnings).
 - [`src/phy_cert.h`](src/phy_cert.h) & [`src/phy_cli.c`](src/phy_cli.c): Zero-Lean-runtime host CLI (`0 leanshared`, `0` heap allocators) running 25 built-in self-tests (`T1..T25`, plus `--fail-fast`), fast-path degree-aware 4-bit & 6-bit quantum-linear `.fir` synthesis/evaluation, and balanced bit-tree `.lean` certificate emission across all 15 hunt modes.
 - [`oracles/verify_noether_oracle.py`](oracles/verify_noether_oracle.py): Parallel multi-process Python `int` + `fractions.Fraction` L2 oracle checking all 15 discovery modes, exact algebraic/quantum invariants, multi-length Floquet / $L=32$ circuit reversibility, $L=6,7,8$ HSF scaling, `.fir` 16/16 & 64/64 parity, live `lean` + `leanchecker` replay + batch `#print axioms` audit (`0 sorryAx`), and parallel `8/8` `QUA`/`ELE` projection checks when sibling builds exist.
@@ -32,6 +32,7 @@
 ## Build & Verify
 
 ```sh
+make all LEAN=false        # Zero-Lean default build via FLOW v10.0.0 flow schema emit
 make clean && make -j verify-all
 ```
 

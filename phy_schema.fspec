@@ -1,0 +1,279 @@
+# Generated from Phy.lean (512 cells, 21 layouts, 23 regions)
+arena 512 PHY PHY_SCHEMA_ABI_H phy_cell_u phy_arena_map phy_arena_u
+
+layout PhyHdrCell phy_hdr_cell_t hdr
+  field magic 0 u32 1
+  field version 32 u32 1
+  field total_cells 64 u32 1
+  field active_rules 96 u32 1
+  field merkle_root 128 u64 1
+  field seed 192 u64 1
+  field flags 256 u64 1
+  field reserved 320 u64 1
+  field pad 384 u64 2
+
+layout PhyHuntStatsCell phy_hunt_stats_t stats
+  field trials_done 0 u64 1
+  field bijective_tested 64 u64 1
+  field entangled_found 128 u64 1
+  field yangbaxter_found 192 u64 1
+  field joint_found 256 u64 1
+  field rejected_separable 320 u64 1
+  field rejected_linear 384 u64 1
+  field best_rule_merkle 448 u64 1
+
+layout PhyRuleCell phy_rule_cell_t rule
+  field lut_packed 0 u64 1
+  field pinv_packed 64 u64 1
+  field merkle 128 u64 1
+  field seed 192 u64 1
+  field flags 256 u32 1
+  field anf_deg 288 u8 1
+  field yb_violations 296 u8 1
+  field rank_tot 304 u8 1
+  field rank_ent 312 u8 1
+  field j_nonzero 320 u16 1
+  field mc_and_count 336 u16 1
+  field cycle_lcm 352 u32 1
+  field soliton_vel_num 384 i32 1
+  field soliton_max_span 416 u32 1
+  field pad0 448 u64 1
+
+layout PhyChargeCell phy_charge_cell_t charge
+  field q 0 i32 16
+
+layout PhyCurrentCell phy_current_cell_t current
+  field j 0 i32 16
+
+layout PhySimFrameCell phy_sim_frame_t frame
+  field state_lo 0 u64 1
+  field state_hi 64 u64 1
+  field pert_lo 128 u64 1
+  field pert_hi 192 u64 1
+  field diff_mask 256 u64 1
+  field total_charge 320 i64 1
+  field step_idx 384 u32 1
+  field damage_count 416 u16 1
+  field front_left 432 u8 1
+  field front_right 440 u8 1
+  field jet_width_lo 448 u32 1
+  field frame_merkle 480 u32 1
+
+layout PhyAuxCell phy_aux_cell_t aux
+  field w 0 u64 8
+
+layout PhyQ4MetaCell phy_q4_meta_t q4_meta
+  field lut_packed 0 u64 1
+  field q4_merkle 64 u64 1
+  field tot2 128 u16 1
+  field tot4 144 u16 1
+  field irred4 160 u16 1
+  field genuine_q4 176 u16 1
+  field j4_nonzero 192 u16 1
+  field q4_nnz 208 u16 1
+  field continuity4_fail 224 i32 1
+  field pad 256 u64 4
+
+layout PhyQ4DensityCell phy_q4_density_t q4_dens
+  field q 0 i32 16
+
+layout PhyYb8RuleCell phy_yb8_rule_t yb8_rule
+  field r 0 u8 64
+
+layout PhyYb8MetaCell phy_yb8_meta_t yb8_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field order 96 u32 1
+  field yb8_violations 128 u16 1
+  field mc_and_count 144 u16 1
+  field anf_deg 160 u8 1
+  field is_bijective 168 u8 1
+  field is_nondeg 176 u8 1
+  field is_involutive 184 u8 1
+  field is_indecomposable 192 u8 1
+  field is_lyubashenko 200 u8 1
+  field noninvol_u 208 u8 1
+  field pad8 216 u8 1
+  field pad32 224 u32 1
+  field pad64 256 u64 4
+
+layout PhyDual4MetaCell phy_dual4_meta_t dual4_meta
+  field lut_packed 0 u64 1
+  field merkle 64 u64 1
+  field mplus_packed 128 u64 1
+  field mminus_packed 192 u64 1
+  field flags 256 u32 1
+  field anf_deg 288 u8 1
+  field is_dual_unitary 296 u8 1
+  field is_mixing 304 u8 1
+  field is_non_bernoulli 312 u8 1
+  field yb_violations 320 u8 1
+  field rank_ent 328 u8 1
+  field pad16 336 u16 1
+  field pad32 352 u32 1
+  field pad64 384 u64 2
+
+layout PhyAme8MetaCell phy_ame8_meta_t ame8_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field order 96 u32 1
+  field anf_deg 128 u8 1
+  field is_bijective 136 u8 1
+  field is_nondeg 144 u8 1
+  field is_crossbij 152 u8 1
+  field is_2unitary 160 u8 1
+  field nl_bit 168 u8 1
+  field nl_a 176 u8 1
+  field nl_b 184 u8 1
+  field pad64 192 u64 5
+
+layout PhyFractonMetaCell phy_fracton_meta_t fracton_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field active_entries 96 u16 1
+  field hsf_sector_size 112 u16 1
+  field hsf_num_comps 128 u16 1
+  field hsf_largest_comp 144 u16 1
+  field hsf_frozen 160 u16 1
+  field iso_span 176 u16 1
+  field dip_span 192 u16 1
+  field anf_deg 208 u8 1
+  field is_bijective 216 u8 1
+  field laplacian_ok 224 u8 1
+  field wit_u 232 u8 1
+  field hsf_target_q 240 u8 1
+  field hsf_target_d 248 u8 1
+  field pad64 256 u64 4
+
+layout PhyBiquandle8MetaCell phy_biquandle8_meta_t bq8_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field order 96 u32 1
+  field col_unknot 128 u16 1
+  field col_hopf 144 u16 1
+  field col_trefoil 160 u16 1
+  field col_fig8 176 u16 1
+  field col_torus5 192 u16 1
+  field col_torus7 208 u16 1
+  field anf_deg 224 u8 1
+  field retract_classes 232 u8 1
+  field is_r1 240 u8 1
+  field is_irretract 248 u8 1
+  field pad64 256 u64 4
+
+layout PhyTetra4MetaCell phy_tetra4_meta_t tetra4_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field order 96 u32 1
+  field tetra4_viol 128 u16 1
+  field tetra2_total 144 u16 1
+  field tetra2_nl 160 u16 1
+  field tetra2_noninvol_nl 176 u16 1
+  field anf_deg 192 u8 1
+  field is_bijective 200 u8 1
+  field is_involutive 208 u8 1
+  field is_3coupled 216 u8 1
+  field noninvol_u 224 u8 1
+  field pad8 232 u8 1
+  field pad16 240 u16 1
+  field pad64 256 u64 4
+
+layout PhyAme4NogoMetaCell phy_ame4_nogo_meta_t ame4_nogo
+  field sample_lut 0 u64 1
+  field merkle 64 u64 1
+  field latin4_count 128 u32 1
+  field total_ols 160 u32 1
+  field affine_ols 192 u32 1
+  field nonlin_ols 224 u32 1
+  field bernoulli_ols 256 u32 1
+  field pad32 288 u32 1
+  field pad64 320 u64 3
+
+layout PhySimplex4MetaCell phy_simplex4_meta_t simplex4_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field viol4 96 u32 1
+  field order4 128 u32 1
+  field viol2_ccx 160 u16 1
+  field viol2_cccx 176 u16 1
+  field anf_deg 192 u8 1
+  field is_bijective 200 u8 1
+  field is_involutive 208 u8 1
+  field is_4coupled 216 u8 1
+  field pad32 224 u32 1
+  field pad64 256 u64 4
+
+layout PhyChiral6MetaCell phy_chiral6_meta_t chiral6_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field cocycle_rank 96 u16 1
+  field unknot_w0 112 u16 1
+  field hopf_w0 128 u16 1
+  field hopf_w2 144 u16 1
+  field tref_l_w1 160 u16 1
+  field tref_r_w3 176 u16 1
+  field fig8_w0 192 u16 1
+  field is_chiral 208 u8 1
+  field is_non_coboundary 216 u8 1
+  field pad32 224 u32 1
+  field pad64 256 u64 4
+
+layout PhyQscarMetaCell phy_qscar_meta_t qscar_meta
+  field merkle 0 u64 1
+  field du_purity_t2_num 64 u64 1
+  field du_purity_t2_den 128 u64 1
+  field therm_purity_t4_num 192 u64 1
+  field therm_purity_t4_den 256 u64 1
+  field flags 320 u32 1
+  field scar_period 352 u16 1
+  field therm_max_sup 368 u16 1
+  field du_unitary 384 u8 1
+  field du_dual 392 u8 1
+  field du_full_sup 400 u8 1
+  field pad8 408 u8 5
+  field pad64 448 u64 1
+
+layout PhyFracCompMetaCell phy_frac_comp_meta_t frac_comp_meta
+  field merkle 0 u64 1
+  field flags 64 u32 1
+  field sec6 96 u16 1
+  field sec7 112 u16 1
+  field sec8 128 u16 1
+  field comp6 144 u16 1
+  field comp7 160 u16 1
+  field comp8 176 u16 1
+  field largest6 192 u16 1
+  field largest7 208 u16 1
+  field largest8 224 u16 1
+  field frozen6 240 u16 1
+  field frozen7 256 u16 1
+  field frozen8 272 u16 1
+  field ccx_ok 288 u8 1
+  field laplacian_ok 296 u8 1
+  field is_involutive 304 u8 1
+  field scaling_strict 312 u8 1
+  field pad64 320 u64 3
+
+region img_hdr 0 1 PhyHdrCell PHY_SLOT_HDR PHY_COUNT_HDR
+region hunt_stats 1 1 PhyHuntStatsCell PHY_SLOT_STATS PHY_COUNT_STATS
+region rules 2 16 PhyRuleCell PHY_SLOT_RULES PHY_COUNT_RULES
+region charges 18 16 PhyChargeCell PHY_SLOT_CHARGES PHY_COUNT_CHARGES
+region currents 34 128 PhyCurrentCell PHY_SLOT_CURRENTS PHY_COUNT_CURRENTS
+region sim_frames 162 32 PhySimFrameCell PHY_SLOT_SIM_FRAMES PHY_COUNT_SIM_FRAMES
+region flow_aux 194 62 PhyAuxCell PHY_SLOT_FLOW_AUX PHY_COUNT_FLOW_AUX
+region q4_meta 256 16 PhyQ4MetaCell PHY_SLOT_Q4_META PHY_COUNT_Q4_META
+region q4_densities 272 64 PhyQ4DensityCell PHY_SLOT_Q4_DENSITIES PHY_COUNT_Q4_DENSITIES
+region yb8_rules 336 16 PhyYb8RuleCell PHY_SLOT_YB8_RULES PHY_COUNT_YB8_RULES
+region yb8_meta 352 16 PhyYb8MetaCell PHY_SLOT_YB8_META PHY_COUNT_YB8_META
+region dual4_meta 368 8 PhyDual4MetaCell PHY_SLOT_DUAL4_META PHY_COUNT_DUAL4_META
+region ame8_meta 376 8 PhyAme8MetaCell PHY_SLOT_AME8_META PHY_COUNT_AME8_META
+region fracton_meta 384 8 PhyFractonMetaCell PHY_SLOT_FRACTON_META PHY_COUNT_FRACTON_META
+region bq8_meta 392 8 PhyBiquandle8MetaCell PHY_SLOT_BQ8_META PHY_COUNT_BQ8_META
+region tetra4_meta 400 8 PhyTetra4MetaCell PHY_SLOT_TETRA4_META PHY_COUNT_TETRA4_META
+region v3_rules6 408 16 PhyYb8RuleCell PHY_SLOT_V3_RULES6 PHY_COUNT_V3_RULES6
+region ame4_nogo 424 1 PhyAme4NogoMetaCell PHY_SLOT_AME4_NOGO PHY_COUNT_AME4_NOGO
+region simplex4_meta 425 8 PhySimplex4MetaCell PHY_SLOT_SIMPLEX4_META PHY_COUNT_SIMPLEX4_META
+region chiral6_meta 433 4 PhyChiral6MetaCell PHY_SLOT_CHIRAL6_META PHY_COUNT_CHIRAL6_META
+region qscar_meta 437 4 PhyQscarMetaCell PHY_SLOT_QSCAR_META PHY_COUNT_QSCAR_META
+region frac_comp_meta 441 4 PhyFracCompMetaCell PHY_SLOT_FRAC_COMP_META PHY_COUNT_FRAC_COMP_META
+region v4_aux 445 67 PhyAuxCell PHY_SLOT_V4_AUX PHY_COUNT_V4_AUX
