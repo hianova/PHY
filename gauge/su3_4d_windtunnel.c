@@ -1892,16 +1892,19 @@ static void *exp2_worker(void *arg) {
 
     double *ps    = (double *)malloc((size_t)N_MEAS_SC * sizeof(double));
     double *ls    = (double *)malloc((size_t)N_MEAS_SC * sizeof(double));
+    if (!ps || !ls) { fprintf(stderr, "ERROR: OOM exp2_worker\n"); exit(1); }
     double *wf_ts[W_MAX_F][W_MAX_F];
     double *wa_ts[W_MAX_A][W_MAX_A];
     for (int r = 0; r < W_MAX_F; ++r) {
         for (int t = 0; t < W_MAX_F; ++t) {
             wf_ts[r][t] = (double *)malloc((size_t)N_MEAS_SC * sizeof(double));
+            if (!wf_ts[r][t]) { fprintf(stderr, "ERROR: OOM wf_ts\n"); exit(1); }
         }
     }
     for (int r = 0; r < W_MAX_A; ++r) {
         for (int t = 0; t < W_MAX_A; ++t) {
             wa_ts[r][t] = (double *)malloc((size_t)N_MEAS_SC * sizeof(double));
+            if (!wa_ts[r][t]) { fprintf(stderr, "ERROR: OOM wa_ts\n"); exit(1); }
         }
     }
 

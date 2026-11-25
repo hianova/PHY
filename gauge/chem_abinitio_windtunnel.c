@@ -1489,6 +1489,7 @@ static void init_rdm2_schema(RDM2Schema *sc, int K, int na, int nb) {
     sc->q0  = (double *)calloc((size_t)nQ, sizeof(double));
     sc->L_G = (double *)calloc((size_t)nG * (size_t)nD, sizeof(double));
     sc->g0  = (double *)calloc((size_t)nG, sizeof(double));
+    if (!sc->L_Q || !sc->q0 || !sc->L_G || !sc->g0) die_msg("OOM init_rdm2_schema");
 
     int pair_ij[MAX_AO * MAX_AO][2];
     int np = 0;
@@ -1609,6 +1610,7 @@ static void init_rdm2_schema(RDM2Schema *sc, int K, int na, int nb) {
     int max_rows = 3 + 2 * nab + 4;
     double *Araw = (double *)calloc((size_t)max_rows * (size_t)nD, sizeof(double));
     double *braw = (double *)calloc((size_t)max_rows, sizeof(double));
+    if (!Araw || !braw) die_msg("OOM init_rdm2_schema Araw");
     int nr = 0;
 
     /* (a) Trace of D_aa = C(na, 2) */
@@ -1673,6 +1675,7 @@ static void init_rdm2_schema(RDM2Schema *sc, int K, int na, int nb) {
     int *keep = (int *)calloc((size_t)nr, sizeof(int));
     int meq = 0;
     double *tmp = (double *)malloc((size_t)nD * sizeof(double));
+    if (!Qorth || !keep || !tmp) die_msg("OOM init_rdm2_schema MGS");
     for (int r = 0; r < nr; r++) {
         memcpy(tmp, &Araw[r * nD], (size_t)nD * sizeof(double));
         for (int prev = 0; prev < meq; prev++) {
@@ -1691,6 +1694,7 @@ static void init_rdm2_schema(RDM2Schema *sc, int K, int na, int nb) {
     sc->meq = meq;
     sc->A_eq = (double *)calloc((size_t)meq * (size_t)nD, sizeof(double));
     sc->b_eq = (double *)calloc((size_t)meq, sizeof(double));
+    if (!sc->A_eq || !sc->b_eq) die_msg("OOM init_rdm2_schema A_eq");
     for (int i = 0; i < meq; i++) {
         memcpy(&sc->A_eq[i * nD], &Araw[keep[i] * nD], (size_t)nD * sizeof(double));
         sc->b_eq[i] = braw[keep[i]];
@@ -1741,6 +1745,7 @@ static void proj_psd_block(int n, const double *v_in, double *v_out, double *min
     double *M = (double *)malloc((size_t)n * (size_t)n * sizeof(double));
     double *ev = (double *)malloc((size_t)n * sizeof(double));
     double *V = (double *)malloc((size_t)n * (size_t)n * sizeof(double));
+    if (!M || !ev || !V) die_msg("OOM proj_psd_block");
     svec_unpack(n, v_in, M);
     sym_eigh(n, M, ev, V);
     if (min_eig_out) *min_eig_out = ev[0];
@@ -1816,6 +1821,7 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
      *          + sum_{p,q in Daa} (pr|qs)-(ps|qr) Daa[p,q] + ... Dbb[p,q]
      *          + sum_{p,q in Dab} (ik|jl) Dab[p,q] */
     double *c = (double *)calloc((size_t)nAll, sizeof(double));
+    if (!c) die_msg("OOM solve_2rdm_dqg c");
     for (int i = 0; i < K; i++) {
         for (int k = 0; k < K; k++) {
             add_gamma_elem(K, sc->szDaa, na, nb, 0, i, k, rhf->H_mo[i][k], c);
@@ -1847,6 +1853,7 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
 
     /* Precompute H = I + L_Q^T L_Q + L_G^T L_G (nD x nD) and Cholesky factor */
     double *H = (double *)calloc((size_t)nD * (size_t)nD, sizeof(double));
+    if (!H) die_msg("OOM solve_2rdm_dqg H");
     for (int i = 0; i < nD; i++) H[i * nD + i] = 1.0;
     for (int r = 0; r < nQ; r++) {
         const double *row = &sc->L_Q[r * nD];
@@ -1871,6 +1878,7 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
     double *Peq = (double *)calloc((size_t)meq * (size_t)meq, sizeof(double));
     double *col_a = (double *)malloc((size_t)nD * sizeof(double));
     double *col_x = (double *)malloc((size_t)nD * sizeof(double));
+    if (!K_corr || !Peq || !col_a || !col_x) die_msg("OOM solve_2rdm_dqg K_corr");
     for (int m = 0; m < meq; m++) {
         memcpy(col_a, &sc->A_eq[m * nD], (size_t)nD * sizeof(double));
         chol_solve(nD, H, col_a, col_x);
@@ -1896,6 +1904,9 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
     double *z = (double *)calloc((size_t)nAll, sizeof(double));
     double *y_prev = (double *)calloc((size_t)nAll, sizeof(double));
     double *w = (double *)calloc((size_t)nAll, sizeof(double));
+    if (!rhs_d || !d0 || !eq_res || !lam_eq || !x || !y || !z || !y_prev || !w) {
+        die_msg("OOM solve_2rdm_dqg admm");
+    }
 
     /* Project an initial point onto affine subspace as clean start */
     double rho = 1.5;
@@ -1986,6 +1997,7 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
     double *cz = (double *)malloc((size_t)nAll * sizeof(double));
     double *pi_ker = (double *)malloc((size_t)nAll * sizeof(double));
     double *S_dual = (double *)malloc((size_t)nAll * sizeof(double));
+    if (!cz || !pi_ker || !S_dual) die_msg("OOM solve_2rdm_dqg dual");
     for (int i = 0; i < nAll; i++) cz[i] = c[i] + z[i];
 
     /* Project cz onto ker(A) (identical projection with q0 = 0, g0 = 0, b_eq = 0!) */
@@ -2065,6 +2077,9 @@ static void solve_2rdm_dqg(const MolSystem *mol, const RHFResult *rhf, const FCI
         double *Gab = (double *)malloc((size_t)(sc->nab * sc->nab) * sizeof(double));
         double *Gba = (double *)malloc((size_t)(sc->nab * sc->nab) * sizeof(double));
         double *xfci = (double *)malloc((size_t)nAll * sizeof(double));
+        if (!Daa || !Dbb || !Dab || !Qaa || !Qbb || !Qab || !Gdiag || !Gab || !Gba || !xfci) {
+            die_msg("OOM solve_2rdm_dqg xfci");
+        }
         compute_fci_dqg_blocks(fci, Daa, Dbb, Dab, Qaa, Qbb, Qab, Gdiag, Gab, Gba);
         pack_fci_dqg_vec(sc, Daa, Dbb, Dab, Qaa, Qbb, Qab, Gdiag, Gab, Gba, xfci);
         double orth = 0.0;
@@ -2313,6 +2328,9 @@ int main(int argc, char **argv) {
     double *Gab4 = (double *)malloc(256 * sizeof(double));
     double *Gba4 = (double *)malloc(256 * sizeof(double));
     double *xfci4 = (double *)malloc((size_t)sc4.nAll * sizeof(double));
+    if (!Daa4 || !Dbb4 || !Dab4 || !Qaa4 || !Qbb4 || !Qab4 || !Gdg4 || !Gab4 || !Gba4 || !xfci4) {
+        die_msg("OOM main h4sq xfci");
+    }
     compute_fci_dqg_blocks(&fci_h4sq, Daa4, Dbb4, Dab4, Qaa4, Qbb4, Qab4, Gdg4, Gab4, Gba4);
     pack_fci_dqg_vec(&sc4, Daa4, Dbb4, Dab4, Qaa4, Qbb4, Qab4, Gdg4, Gab4, Gba4, xfci4);
 

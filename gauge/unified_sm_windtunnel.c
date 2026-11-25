@@ -471,6 +471,7 @@ static int run_selftests(selftest_res_t *st) {
     quat_t *h = calloc(V4, sizeof(*h));
     quat_t *hp = calloc(V4, sizeof(*hp));
     quat_t *gs = calloc(V4, sizeof(*gs));
+    if (!U || !Up || !h || !hp || !gs) { fprintf(stderr, "OOM selftest\n"); exit(1); }
     for (int s = 0; s < V4; ++s) {
         gs[s] = q_rand_su2(&rng);
         h[s] = q_mk(0.7+0.3*rng_u01(&rng), rng_u01(&rng)-0.5, rng_u01(&rng)-0.5, rng_u01(&rng)-0.5);
@@ -602,6 +603,7 @@ static void *exp1_ew_worker(void *arg) {
     quat_t (*Us1)[4] = calloc(V4, sizeof(*Us1));
     quat_t (*Us2)[4] = calloc(V4, sizeof(*Us2));
     quat_t *h       = calloc(V4, sizeof(*h));
+    if (!U || !Us1 || !Us2 || !h) { fprintf(stderr, "OOM exp1_ew_worker\n"); exit(1); }
 
     rng_t rng;
     rng_seed(&rng, 0xE1000000ULL + (uint64_t)(res->kappa * 1000.0));

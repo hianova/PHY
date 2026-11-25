@@ -487,6 +487,7 @@ static void run_selftests(void) {
 
     /* 1. Random local SU(2) gauge transformation g(x) */
     quat_t *g = (quat_t *)malloc((size_t)lat.vol * sizeof(quat_t));
+    if (!g) { fprintf(stderr, "ERROR: OOM allocating gauge field\n"); exit(1); }
     for (int i = 0; i < lat.vol; ++i) {
         g[i] = sample_su2_boltzmann(0.0, &rng);
     }

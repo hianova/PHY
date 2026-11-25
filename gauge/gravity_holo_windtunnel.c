@@ -1510,6 +1510,12 @@ static void run_exp2_ame8(double S1_out[256], double S2_out[256], int mc_out[256
     uint8_t *vis_v = (uint8_t *)malloc(4096 * sizeof(uint8_t));
     int *qu = (int *)malloc(4096 * sizeof(int));
     int *qv = (int *)malloc(4096 * sizeof(int));
+    if (!edges || !ka_arr || !kb_arr || !u_id || !v_id || !adj_u_head || !adj_v_head ||
+        !edge_to_v || !edge_next_u || !edge_to_u || !edge_next_v || !vis_u || !vis_v ||
+        !qu || !qv) {
+        perror("malloc");
+        exit(2);
+    }
 
     for (int mask = 0; mask < 256; ++mask) {
         int best_mc = 99;
