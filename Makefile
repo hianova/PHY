@@ -111,7 +111,7 @@ ifeq ($(UNAME_S),Darwin)
 		echo "ERROR: Forbidden instruction or vector register in phy_ring0.c.o"; exit 1; \
 	fi
 else
-	@if objdump -d $(BUILD)/phy_ring0.c.o | grep -qE '\b(udiv|sdiv|fdiv|fmul|fadd|fsub|blr|br)\b|%?[xyz]mm[0-9]+|\bv[0-9]+\.'; then \
+	@if objdump -d --no-show-raw-insn $(BUILD)/phy_ring0.c.o | awk '/^[[:space:]]*[0-9a-f]+:[[:space:]]+/{ sub(/^[[:space:]]*[0-9a-f]+:[[:space:]]+/, ""); sub(/<[^>]*>/, ""); print }' | grep -E '^(udiv|sdiv|fdiv|fmul|fadd|fsub|blr|br)\b|%?[xyz]mm[0-9]+|\bv[0-9]+\.'; then \
 		echo "ERROR: Forbidden instruction or vector register in phy_ring0.c.o"; exit 1; \
 	fi
 endif
