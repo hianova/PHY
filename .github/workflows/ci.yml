@@ -1,0 +1,68 @@
+name: CI
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches: [ main, "feat/**", "refactor/**" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify-phy:
+    name: PHY v4.0.0 Noether Lean 4, Pure-GPR Ring-0 & 8-Gate Suite (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    steps:
+      - name: Checkout FLOW (main)
+        uses: actions/checkout@v6
+        with:
+          repository: hianova/FLOW
+          ref: main
+          path: FLOW
+
+      - name: Checkout PHY
+        uses: actions/checkout@v6
+        with:
+          path: PHY
+
+      - name: Install Clang Toolchain & Z3 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang clang-tidy clang-format z3
+
+      - name: Install LLVM & Z3 Toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm z3
+
+      - name: Cache Lean 4 Toolchain
+        uses: actions/cache@v5
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-${{ runner.arch }}-elan-lean-4.36.0
+
+      - name: Install Lean 4 Toolchain
+        run: |
+          set -euo pipefail
+          if ! "$HOME/.elan/bin/lean" --version >/dev/null 2>&1; then
+            curl --retry 5 -sSfL https://elan.lean-lang.org/elan-init.sh -o /tmp/elan-init.sh
+            sh /tmp/elan-init.sh -y --default-toolchain leanprover/lean4:v4.36.0
+          fi
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build FLOW & Run PHY v4.0.0 8-Gate Verification Suite
+        run: |
+          export PATH="$HOME/.elan/bin:$PATH"
+          if [ "$(uname -s)" = "Darwin" ]; then
+            export PATH="$(brew --prefix llvm)/bin:$PATH"
+          fi
+          make -C FLOW all lean CC=clang CXX=clang++
+          make -C PHY clean
+          make -C PHY verify-all CC=clang CXX=clang++
