@@ -60,9 +60,13 @@ BIN_CHEM    := $(BUILD)/chem_abinitio_windtunnel
 BENCH_CHEM  := $(BUILD)/chem_abinitio_bench.json
 REPORT_CHEM := GAUGE_STAGE10_CHEM_REPORT.md
 
-.PHONY: all stage1 stage2 stage3 stage4 stage5 stage6 stage7 stage8 stage9 stage10 compile run verify compile-cpn run-cpn verify-cpn compile-su2 run-su2 verify-su2 compile-mg run-mg verify-mg compile-bs run-bs verify-bs compile-su3 run-su3 verify-su3 compile-ferm run-ferm verify-ferm compile-grav run-grav verify-grav compile-unif run-unif verify-unif compile-chem run-chem verify-chem clean
+# Stage 11: Null-Cone Algebraic Gravity & Holographic Falsification Wind Tunnel
+BIN_NC      := $(BUILD)/null_cone_windtunnel
+BENCH_NC    := $(BUILD)/null_cone_bench.json
 
-all: stage1 stage2 stage3 stage4 stage5 stage6 stage7 stage8 stage9 stage10
+.PHONY: all stage1 stage2 stage3 stage4 stage5 stage6 stage7 stage8 stage9 stage10 stage11 compile run verify compile-cpn run-cpn verify-cpn compile-su2 run-su2 verify-su2 compile-mg run-mg verify-mg compile-bs run-bs verify-bs compile-su3 run-su3 verify-su3 compile-ferm run-ferm verify-ferm compile-grav run-grav verify-grav compile-unif run-unif verify-unif compile-chem run-chem verify-chem compile-nc run-nc clean
+
+all: stage1 stage2 stage3 stage4 stage5 stage6 stage7 stage8 stage9 stage10 stage11
 
 stage1: compile run verify
 
@@ -83,6 +87,8 @@ stage8: compile-grav run-grav verify-grav
 stage9: compile-unif run-unif verify-unif
 
 stage10: compile-chem run-chem verify-chem
+
+stage11: compile-nc run-nc
 
 $(BUILD):
 	@mkdir -p $(BUILD)
@@ -196,6 +202,14 @@ run-chem: $(BIN_CHEM)
 
 verify-chem: $(BENCH_CHEM) chem_abinitio_oracle.py
 	$(PYTHON) chem_abinitio_oracle.py --bench $(BENCH_CHEM) --report $(REPORT_CHEM)
+
+$(BIN_NC): null_cone_windtunnel.c | $(BUILD)
+	$(CC) $(CFLAGS) $< -lm -o $@
+
+compile-nc: $(BIN_NC)
+
+run-nc: $(BIN_NC)
+	./$(BIN_NC) --json $(BENCH_NC)
 
 clean:
 	rm -rf $(BUILD)
