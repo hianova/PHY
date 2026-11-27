@@ -2,10 +2,15 @@
 #define PHY_CERT_H
 
 #include "flow_ir_builder.h"
+#include "flow_ir_io.h"
+#include "flow_wire_pack.h"
 #include "phy.h"
 #include "searu_mc_gf2.h"
 #include <stdio.h>
 #include <string.h>
+
+#define PHY_ARENA_PACK_MAX_BYTES \
+    ((size_t)FLOW_ARENA_PACK_HDR_B + ((size_t)PHY_TOTAL_CELLS * 70U) + 8U)
 
 typedef struct {
     searu_mc_ws mc_ws;
@@ -14,12 +19,163 @@ typedef struct {
     flow_ir_prog_t ir_reloaded;
     uint8_t wire_buf[FLOW_IR_MAX_FILE_BYTES];
     size_t wire_len;
+    uint8_t legacy_wire_buf[FLOW_IR_MAX_FILE_BYTES];
+    size_t legacy_wire_len;
     uint16_t and_count;
     uint16_t mult_depth;
     bool ir_linear_ok;
     bool ir_unitary_ok;
     bool ir_eval_ok;
 } phy_fir_cert_ws_t;
+
+static inline bool phy_wire_is_flwa(const uint8_t *buf, size_t len) {
+    return (buf != NULL && len >= (size_t)FLOW_ARENA_PACK_HDR_B + 8U &&
+            flow_ir_wire_read_le32(buf + 0U) == FLOW_ARENA_PACK_MAGIC);
+}
+
+static inline bool phy_wire_is_fir2(const uint8_t *buf, size_t len) {
+    return (buf != NULL && len >= 14U && flow_ir_wire_read_le32(buf + 0U) == FLOW_IR_PACK_MAGIC);
+}
+
+static inline bool phy_wire_is_fir1(const uint8_t *buf, size_t len) {
+    return (buf != NULL && len >= (size_t)FLOW_IR_HEADER_BYTES + 8U &&
+            flow_ir_wire_read_le32(buf + 0U) == FLOW_IR_MAGIC);
+}
+
+static inline bool phy_arena_pack_wire(const phy_arena_u *arena, uint8_t *out, size_t out_cap,
+                                       size_t *out_len) {
+    if (arena == NULL || out == NULL || out_len == NULL) {
+        return false;
+    }
+    return flow_arena_pack_bytes((const uint8_t *)arena, PHY_ARENA_BYTES, out, out_cap, out_len);
+}
+
+static inline bool phy_arena_unpack_auto(const uint8_t *in, size_t in_len, phy_arena_u *out_arena,
+                                         bool *out_was_packed) {
+    if (in == NULL || out_arena == NULL) {
+        return false;
+    }
+    if (phy_wire_is_flwa(in, in_len)) {
+        size_t raw_len = 0U;
+        if (!flow_arena_unpack_bytes(in, in_len, (uint8_t *)out_arena, PHY_ARENA_BYTES, &raw_len) ||
+            raw_len != PHY_ARENA_BYTES) {
+            return false;
+        }
+        if (out_arena->map.img_hdr.magic != PHY_MAGIC ||
+            out_arena->map.img_hdr.total_cells != PHY_TOTAL_CELLS) {
+            return false;
+        }
+        if (out_was_packed != NULL) {
+            *out_was_packed = true;
+        }
+        return true;
+    }
+    if (in_len == PHY_ARENA_BYTES && flow_ir_wire_read_le32(in + 0U) == PHY_MAGIC &&
+        flow_ir_wire_read_le32(in + 8U) == PHY_TOTAL_CELLS) {
+        memcpy(out_arena, in, PHY_ARENA_BYTES);
+        if (out_was_packed != NULL) {
+            *out_was_packed = false;
+        }
+        return true;
+    }
+    return false;
+}
+
+static inline bool phy_read_bounded_file(const char *path, uint8_t *buf, size_t cap,
+                                         size_t *out_len) {
+    if (path == NULL || path[0] == '\0' || buf == NULL || cap == 0U || out_len == NULL) {
+        return false;
+    }
+    FILE *fp = fopen(path, "rb");
+    if (fp == NULL) {
+        return false;
+    }
+    size_t n = fread(buf, 1U, cap, fp);
+    int extra = fgetc(fp);
+    bool read_err = (ferror(fp) != 0);
+    fclose(fp);
+    if (read_err || extra != EOF || n == 0U) {
+        return false;
+    }
+    *out_len = n;
+    return true;
+}
+
+static inline bool phy_arena_save_flwa(const phy_arena_u *arena, const char *path, uint8_t *scratch,
+                                       size_t scratch_cap, size_t *out_len) {
+    size_t wire_len = 0U;
+    if (!phy_arena_pack_wire(arena, scratch, scratch_cap, &wire_len)) {
+        return false;
+    }
+    if (out_len != NULL) {
+        *out_len = wire_len;
+    }
+    return flow_ir_write_bytes_file(path, scratch, wire_len);
+}
+
+static inline bool phy_arena_load_auto_file(const char *path, phy_arena_u *out_arena,
+                                            uint8_t *scratch, size_t scratch_cap,
+                                            size_t *out_file_len, bool *out_was_packed) {
+    size_t n = 0U;
+    if (!phy_read_bounded_file(path, scratch, scratch_cap, &n)) {
+        return false;
+    }
+    if (out_file_len != NULL) {
+        *out_file_len = n;
+    }
+    return phy_arena_unpack_auto(scratch, n, out_arena, out_was_packed);
+}
+
+static inline bool phy_fir_load_auto_file(const char *path, flow_ir_prog_t *out_prog,
+                                          uint8_t *scratch, size_t scratch_cap,
+                                          size_t *out_file_len, bool *out_was_packed) {
+    if (out_prog == NULL) {
+        return false;
+    }
+    size_t n = 0U;
+    if (!phy_read_bounded_file(path, scratch, scratch_cap, &n)) {
+        return false;
+    }
+    if (out_file_len != NULL) {
+        *out_file_len = n;
+    }
+    if (out_was_packed != NULL) {
+        *out_was_packed = phy_wire_is_fir2(scratch, n);
+    }
+    return flow_ir_load_bytes_fiber(out_prog, scratch, n) == FLOW_IR_FIBER_COMMITTED;
+}
+
+static inline bool phy_fir_pack_file(const char *in_path, const char *out_path,
+                                     flow_ir_prog_t *prog_ws, uint8_t *in_buf, size_t in_cap,
+                                     uint8_t *out_buf, size_t out_cap, size_t *out_in_len,
+                                     size_t *out_packed_len) {
+    if (prog_ws == NULL || out_buf == NULL || out_packed_len == NULL) {
+        return false;
+    }
+    if (!phy_fir_load_auto_file(in_path, prog_ws, in_buf, in_cap, out_in_len, NULL)) {
+        return false;
+    }
+    if (!flow_ir_encode_packed_bytes(prog_ws, out_buf, out_cap, out_packed_len)) {
+        return false;
+    }
+    return flow_ir_write_bytes_file(out_path, out_buf, *out_packed_len);
+}
+
+static inline bool phy_fir_unpack_file(const char *in_path, const char *out_path,
+                                       flow_ir_prog_t *prog_ws, uint8_t *in_buf, size_t in_cap,
+                                       uint8_t *out_buf, size_t out_cap, size_t *out_in_len,
+                                       size_t *out_unpacked_len) {
+    if (prog_ws == NULL || out_buf == NULL || out_unpacked_len == NULL) {
+        return false;
+    }
+    if (!phy_fir_load_auto_file(in_path, prog_ws, in_buf, in_cap, out_in_len, NULL)) {
+        return false;
+    }
+    if (!flow_ir_encode_bytes(prog_ws, out_buf, out_cap, out_unpacked_len)) {
+        return false;
+    }
+    return flow_ir_write_bytes_file(out_path, out_buf, *out_unpacked_len);
+}
 
 static inline uint32_t phy_cert_emit_const(flow_ir_prog_t *p, uint64_t val, const char *name) {
     return flow_ir_emit_const(p, 1U, val, name);
@@ -143,6 +299,7 @@ static inline bool phy_synth_fir_4bit(const uint8_t lut[16], uint64_t seed, cons
     ws->and_count = 0U;
     ws->mult_depth = 0U;
     ws->wire_len = 0U;
+    ws->legacy_wire_len = 0U;
     ws->ir_linear_ok = false;
     ws->ir_unitary_ok = false;
     ws->ir_eval_ok = false;
@@ -241,7 +398,15 @@ static inline bool phy_synth_fir_4bit(const uint8_t lut[16], uint64_t seed, cons
     p->num_outputs = 1U;
     p->outputs[0] = out_vid;
 
-    if (!flow_ir_encode_bytes(p, ws->wire_buf, sizeof(ws->wire_buf), &ws->wire_len)) {
+    if (!flow_ir_encode_bytes(p, ws->legacy_wire_buf, sizeof(ws->legacy_wire_buf),
+                              &ws->legacy_wire_len)) {
+        return false;
+    }
+    if (flow_ir_load_bytes_fiber(&ws->ir_reloaded, ws->legacy_wire_buf, ws->legacy_wire_len) !=
+        FLOW_IR_FIBER_COMMITTED) {
+        return false;
+    }
+    if (!flow_ir_encode_packed_bytes(p, ws->wire_buf, sizeof(ws->wire_buf), &ws->wire_len)) {
         return false;
     }
 
@@ -268,13 +433,7 @@ static inline bool phy_synth_fir_4bit(const uint8_t lut[16], uint64_t seed, cons
     ws->ir_eval_ok = match;
 
     if (out_fir_path != NULL && out_fir_path[0] != '\0') {
-        FILE *fp = fopen(out_fir_path, "wb");
-        if (fp == NULL) {
-            return false;
-        }
-        size_t nw = fwrite(ws->wire_buf, 1U, ws->wire_len, fp);
-        fclose(fp);
-        if (nw != ws->wire_len) {
+        if (!flow_ir_write_bytes_file(out_fir_path, ws->wire_buf, ws->wire_len)) {
             return false;
         }
     }
@@ -544,7 +703,9 @@ static inline bool phy_emit_rule_json(const phy_rule_analysis_t *rule, const phy
     if (fir != NULL) {
         fprintf(fp, ",\n  \"fir_and_count\": %u,\n", (unsigned)fir->and_count);
         fprintf(fp, "  \"fir_mult_depth\": %u,\n", (unsigned)fir->mult_depth);
+        fprintf(fp, "  \"fir_wire_format\": \"FIR2\",\n");
         fprintf(fp, "  \"fir_wire_bytes\": %zu,\n", fir->wire_len);
+        fprintf(fp, "  \"fir_legacy_bytes\": %zu,\n", fir->legacy_wire_len);
         fprintf(fp, "  \"fir_eval_ok\": %s", fir->ir_eval_ok ? "true" : "false");
     }
     fprintf(fp, "\n}\n");
@@ -914,6 +1075,7 @@ static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const 
     ws->and_count = 0U;
     ws->mult_depth = 0U;
     ws->wire_len = 0U;
+    ws->legacy_wire_len = 0U;
     ws->ir_linear_ok = false;
     ws->ir_unitary_ok = false;
     ws->ir_eval_ok = false;
@@ -1023,7 +1185,15 @@ static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const 
     p->num_outputs = 1U;
     p->outputs[0] = yb_out_vid;
 
-    if (!flow_ir_encode_bytes(p, ws->wire_buf, sizeof(ws->wire_buf), &ws->wire_len)) {
+    if (!flow_ir_encode_bytes(p, ws->legacy_wire_buf, sizeof(ws->legacy_wire_buf),
+                              &ws->legacy_wire_len)) {
+        return false;
+    }
+    if (flow_ir_load_bytes_fiber(&ws->ir_reloaded, ws->legacy_wire_buf, ws->legacy_wire_len) !=
+        FLOW_IR_FIBER_COMMITTED) {
+        return false;
+    }
+    if (!flow_ir_encode_packed_bytes(p, ws->wire_buf, sizeof(ws->wire_buf), &ws->wire_len)) {
         return false;
     }
     if (flow_ir_load_bytes_fiber(&ws->ir_reloaded, ws->wire_buf, ws->wire_len) !=
@@ -1049,13 +1219,7 @@ static inline bool phy_synth_fir_6bit(const uint8_t r[64], uint64_t seed, const 
     ws->ir_eval_ok = match;
 
     if (out_fir_path != NULL && out_fir_path[0] != '\0') {
-        FILE *fp = fopen(out_fir_path, "wb");
-        if (fp == NULL) {
-            return false;
-        }
-        size_t nw = fwrite(ws->wire_buf, 1U, ws->wire_len, fp);
-        fclose(fp);
-        if (nw != ws->wire_len) {
+        if (!flow_ir_write_bytes_file(out_fir_path, ws->wire_buf, ws->wire_len)) {
             return false;
         }
     }
@@ -1112,7 +1276,9 @@ static inline bool phy_emit_q4_json(const phy_q4_analysis_t *q4, const phy_butte
     if (fir != NULL) {
         fprintf(fp, ",\n  \"fir_and_count\": %u,\n", (unsigned)fir->and_count);
         fprintf(fp, "  \"fir_mult_depth\": %u,\n", (unsigned)fir->mult_depth);
+        fprintf(fp, "  \"fir_wire_format\": \"FIR2\",\n");
         fprintf(fp, "  \"fir_wire_bytes\": %zu,\n", fir->wire_len);
+        fprintf(fp, "  \"fir_legacy_bytes\": %zu,\n", fir->legacy_wire_len);
         fprintf(fp, "  \"fir_eval_ok\": %s", fir->ir_eval_ok ? "true" : "false");
     }
     fprintf(fp, "\n}\n");
@@ -1149,7 +1315,9 @@ static inline bool phy_emit_yb8_json(const phy_yb8_analysis_t *yb8, const phy_fi
     if (fir != NULL) {
         fprintf(fp, ",\n  \"fir_and_count\": %u,\n", (unsigned)fir->and_count);
         fprintf(fp, "  \"fir_mult_depth\": %u,\n", (unsigned)fir->mult_depth);
+        fprintf(fp, "  \"fir_wire_format\": \"FIR2\",\n");
         fprintf(fp, "  \"fir_wire_bytes\": %zu,\n", fir->wire_len);
+        fprintf(fp, "  \"fir_legacy_bytes\": %zu,\n", fir->legacy_wire_len);
         fprintf(fp, "  \"fir_eval_ok\": %s", fir->ir_eval_ok ? "true" : "false");
     }
     fprintf(fp, "\n}\n");
@@ -1531,7 +1699,9 @@ static inline void phy_emit_json_fir_tail(FILE *fp, const phy_fir_cert_ws_t *fir
     if (fir != NULL) {
         fprintf(fp, ",\n  \"fir_and_count\": %u,\n", (unsigned)fir->and_count);
         fprintf(fp, "  \"fir_mult_depth\": %u,\n", (unsigned)fir->mult_depth);
+        fprintf(fp, "  \"fir_wire_format\": \"FIR2\",\n");
         fprintf(fp, "  \"fir_wire_bytes\": %zu,\n", fir->wire_len);
+        fprintf(fp, "  \"fir_legacy_bytes\": %zu,\n", fir->legacy_wire_len);
         fprintf(fp, "  \"fir_eval_ok\": %s", fir->ir_eval_ok ? "true" : "false");
     }
     fprintf(fp, "\n}\n");

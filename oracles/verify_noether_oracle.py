@@ -243,9 +243,25 @@ def probe_4site_conservation(p: List[int], trials: int = 200) -> int:
 
 
 def verify_fir_eval(fir_path: Path, expected: List[int], subcmd: str = "eval-fir") -> None:
+    raw_fir2 = fir_path.read_bytes()
+    assert raw_fir2[:4] == b"FIR2", f"Expected canonical FIR2 magic in {fir_path}, got {raw_fir2[:4]!r}"
     out = subprocess.check_output([str(PHY_BIN), subcmd, str(fir_path)], text=True).strip()
     got = [int(tok) for tok in out.split()]
     assert got == expected, f".fir ({subcmd}) mismatch: got len={len(got)} vs expected len={len(expected)}"
+    # Verify transparent legacy FIR1 auto-decode & bit-exact FIR2 <-> FIR1 roundtrip
+    tmp_fir1 = fir_path.with_suffix(".fir1.tmp")
+    tmp_fir2 = fir_path.with_suffix(".fir2.tmp")
+    try:
+        subprocess.run([str(PHY_BIN), "fir-unpack", str(fir_path), str(tmp_fir1)], capture_output=True, text=True, check=True)
+        raw_fir1 = tmp_fir1.read_bytes()
+        assert raw_fir1[:4] == b"FIR1" and len(raw_fir2) < len(raw_fir1)
+        out1 = subprocess.check_output([str(PHY_BIN), subcmd, str(tmp_fir1)], text=True).strip()
+        assert [int(tok) for tok in out1.split()] == expected
+        subprocess.run([str(PHY_BIN), "fir-pack", str(tmp_fir1), str(tmp_fir2)], capture_output=True, text=True, check=True)
+        assert tmp_fir2.read_bytes() == raw_fir2, f"FIR2 roundtrip mismatch for {fir_path}"
+    finally:
+        tmp_fir1.unlink(missing_ok=True)
+        tmp_fir2.unlink(missing_ok=True)
 
 
 def verify_q4_continuity_exact(p: List[int], q4: List[int]) -> int:
@@ -1372,14 +1388,27 @@ def verify_cross_ecosystem_bridge(fir_paths: List[Tuple[str, Path]]) -> None:
     pdk = ROOT.parent / "ELE" / "build" / "pdk_sky130.flow"
 def _run_qcc_one(qcc: Path, tag: str, fp: Path) -> None:
     kmb = BUILD / f"qcc_{tag}.kmb"
-    subprocess.run([str(qcc), "opt", str(fp), "-o", str(kmb)], capture_output=True, text=True, check=True)
-    vres = subprocess.run(
-        [str(qcc), "verify", str(kmb), "--ref", str(fp), "--states", "4096"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert "PASS" in vres.stdout or "val_err=0" in vres.stdout, f"qcc verify failed on {tag}: {vres.stdout}"
+    ref_fp = fp
+    tmp_fir1: Optional[Path] = None
+    try:
+        opt_res = subprocess.run([str(qcc), "opt", str(ref_fp), "-o", str(kmb)], capture_output=True, text=True, check=False)
+        if opt_res.returncode != 0 and fp.read_bytes()[:4] == b"FIR2":
+            tmp_fir1 = BUILD / f"qcc_{tag}_legacy.fir"
+            subprocess.run([str(PHY_BIN), "fir-unpack", str(fp), str(tmp_fir1)], capture_output=True, text=True, check=True)
+            ref_fp = tmp_fir1
+            subprocess.run([str(qcc), "opt", str(ref_fp), "-o", str(kmb)], capture_output=True, text=True, check=True)
+        elif opt_res.returncode != 0:
+            raise subprocess.CalledProcessError(opt_res.returncode, opt_res.args, opt_res.stdout, opt_res.stderr)
+        vres = subprocess.run(
+            [str(qcc), "verify", str(kmb), "--ref", str(ref_fp), "--states", "4096"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        assert "PASS" in vres.stdout or "val_err=0" in vres.stdout, f"qcc verify failed on {tag}: {vres.stdout}"
+    finally:
+        if tmp_fir1 is not None:
+            tmp_fir1.unlink(missing_ok=True)
 
 
 def _run_ele_one(ele: Path, pdk: Path, tag: str, fp: Path) -> None:
@@ -1921,6 +1950,52 @@ def main() -> int:
 
     for line in bridge_lines:
         print(line)
+
+    # Verify canonical FLWA arena pack/unpack & FIR2 vs FIR1 savings across all generated JSON certs
+    flwa_path = BUILD / "discovered_noether.flwa"
+    raw_arena_path = BUILD / "discovered_noether_arena.raw.tmp"
+    flwa_rt_path = BUILD / "discovered_noether_arena.flwa.tmp"
+    try:
+        subprocess.run(
+            [
+                str(PHY_BIN),
+                "hunt",
+                "entangled",
+                "--seed",
+                "2026",
+                "--trials",
+                "2000",
+                "--out-arena",
+                str(flwa_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        flwa_bytes = flwa_path.read_bytes()
+        assert flwa_bytes[:4] == b"FLWA" and len(flwa_bytes) < 32768
+        subprocess.run([str(PHY_BIN), "arena-unpack", str(flwa_path), str(raw_arena_path)], capture_output=True, text=True, check=True)
+        raw_bytes = raw_arena_path.read_bytes()
+        assert len(raw_bytes) == 32768
+        subprocess.run([str(PHY_BIN), "arena-pack", str(raw_arena_path), str(flwa_rt_path)], capture_output=True, text=True, check=True)
+        assert flwa_rt_path.read_bytes() == flwa_bytes
+    finally:
+        raw_arena_path.unlink(missing_ok=True)
+        flwa_rt_path.unlink(missing_ok=True)
+
+    fir_legacy_total = 0
+    fir_packed_total = 0
+    for jp in sorted(BUILD.glob("discovered_*.json")):
+        jd = json.loads(jp.read_text(encoding="utf-8"))
+        if "fir_wire_bytes" in jd and "fir_legacy_bytes" in jd:
+            assert jd.get("fir_wire_format") == "FIR2"
+            assert jd["fir_wire_bytes"] < jd["fir_legacy_bytes"]
+            fir_packed_total += int(jd["fir_wire_bytes"])
+            fir_legacy_total += int(jd["fir_legacy_bytes"])
+    print(
+        f"  [Oracle WIRE]      PASS: FLWA arena 32768 B -> {len(flwa_bytes)} B "
+        f"| FIR1 -> FIR2 total {fir_legacy_total} B -> {fir_packed_total} B"
+    )
 
     print("GATE 5 ORACLE VERIFICATION: ALL 15 MODES PASSED (0 sorryAx)")
     return 0

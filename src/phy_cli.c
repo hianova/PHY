@@ -5,12 +5,15 @@
 #include <string.h>
 
 static phy_arena_u g_arena;
+static phy_arena_u g_arena_rt;
 static phy_q4_ws_t g_q4_ws;
 static phy_fracton_hsf_ws_t g_frac_ws;
 static phy_fracton_scale_ws_t g_frac_scale_ws;
 static phy_fir_cert_ws_t g_fir_ws;
 static flow_ir_prog_t g_eval_prog;
 static uint8_t g_eval_buf[FLOW_IR_MAX_FILE_BYTES];
+static uint8_t g_trans_out_buf[FLOW_IR_MAX_FILE_BYTES];
+static uint8_t g_arena_wire[PHY_ARENA_PACK_MAX_BYTES];
 
 static uint64_t phy_rotl64_2bit_left(uint64_t *lo, uint64_t *hi) {
     /* Rotate 64 2-bit sites toward lower index by 1 site (site s <- old site (s+1)%64) */
@@ -34,7 +37,7 @@ static void phy_rotl64_2bit_right(uint64_t *lo, uint64_t *hi) {
 
 static int phy_selftest(bool fail_fast) {
     int passed = 0;
-    const int total = 25;
+    const int total = 26;
 
     /* T1: M61 arithmetic, Stein GCD, binary division, FNV-1a */
     bool ok1 = true;
@@ -819,88 +822,83 @@ static int phy_selftest(bool fail_fast) {
         return 1;
     }
 
+    /* T26: Canonical "FLWA" Sparse Arena & "FIR2"/"FIR1" Wire Pack/Unpack Bit-Exact Roundtrip */
+    size_t flwa_len = 0U;
+    bool ok26 = ok25 &&
+                phy_arena_pack_wire(&g_arena, g_arena_wire, sizeof(g_arena_wire), &flwa_len) &&
+                phy_wire_is_flwa(g_arena_wire, flwa_len) && flwa_len < PHY_ARENA_BYTES;
+    if (ok26) {
+        bool was_packed = false;
+        memset(&g_arena_rt, 0xA5, sizeof(g_arena_rt));
+        if (!phy_arena_unpack_auto(g_arena_wire, flwa_len, &g_arena_rt, &was_packed) ||
+            !was_packed || memcmp(&g_arena, &g_arena_rt, PHY_ARENA_BYTES) != 0) {
+            ok26 = false;
+        }
+        /* Transparent legacy raw 32KB arena auto-decode */
+        memset(&g_arena_rt, 0x5A, sizeof(g_arena_rt));
+        if (!phy_arena_unpack_auto((const uint8_t *)&g_arena, PHY_ARENA_BYTES, &g_arena_rt,
+                                   &was_packed) ||
+            was_packed || memcmp(&g_arena, &g_arena_rt, PHY_ARENA_BYTES) != 0) {
+            ok26 = false;
+        }
+        /* Reject tampered FLWA trailer/body */
+        g_arena_wire[flwa_len - 1U] ^= UINT8_C(0x01);
+        if (phy_arena_unpack_auto(g_arena_wire, flwa_len, &g_arena_rt, &was_packed)) {
+            ok26 = false;
+        }
+        g_arena_wire[flwa_len - 1U] ^= UINT8_C(0x01);
+    }
+    if (ok26) {
+        size_t rt_len = 0U;
+        if (!phy_wire_is_fir2(g_fir_ws.wire_buf, g_fir_ws.wire_len) ||
+            !phy_wire_is_fir1(g_fir_ws.legacy_wire_buf, g_fir_ws.legacy_wire_len) ||
+            g_fir_ws.wire_len >= g_fir_ws.legacy_wire_len) {
+            ok26 = false;
+        }
+        /* Legacy FIR1 -> auto-decode -> canonical FIR2 bit-exact match */
+        if (ok26 &&
+            (flow_ir_load_bytes_fiber(&g_eval_prog, g_fir_ws.legacy_wire_buf,
+                                      g_fir_ws.legacy_wire_len) != FLOW_IR_FIBER_COMMITTED ||
+             !flow_ir_encode_packed_bytes(&g_eval_prog, g_trans_out_buf, sizeof(g_trans_out_buf),
+                                          &rt_len) ||
+             rt_len != g_fir_ws.wire_len ||
+             memcmp(g_trans_out_buf, g_fir_ws.wire_buf, rt_len) != 0)) {
+            ok26 = false;
+        }
+        /* Canonical FIR2 -> auto-decode -> legacy FIR1 bit-exact match */
+        if (ok26 && (flow_ir_load_bytes_fiber(&g_eval_prog, g_fir_ws.wire_buf, g_fir_ws.wire_len) !=
+                         FLOW_IR_FIBER_COMMITTED ||
+                     !flow_ir_encode_bytes(&g_eval_prog, g_trans_out_buf, sizeof(g_trans_out_buf),
+                                           &rt_len) ||
+                     rt_len != g_fir_ws.legacy_wire_len ||
+                     memcmp(g_trans_out_buf, g_fir_ws.legacy_wire_buf, rt_len) != 0)) {
+            ok26 = false;
+        }
+        /* Reject tampered FIR2 MAC */
+        if (ok26) {
+            memcpy(g_eval_buf, g_fir_ws.wire_buf, g_fir_ws.wire_len);
+            g_eval_buf[g_fir_ws.wire_len - 1U] ^= UINT8_C(0x01);
+            if (flow_ir_load_bytes_fiber(&g_eval_prog, g_eval_buf, g_fir_ws.wire_len) ==
+                FLOW_IR_FIBER_COMMITTED) {
+                ok26 = false;
+            }
+        }
+    }
+    printf("T26 (FLWA Arena & FIR2/FIR1 Wire Pack): %s (arena=%zu->%zuB fir=%zu->%zuB)\n",
+           ok26 ? "PASS" : "FAIL", (size_t)PHY_ARENA_BYTES, flwa_len, g_fir_ws.legacy_wire_len,
+           g_fir_ws.wire_len);
+    if (ok26) {
+        ++passed;
+    } else if (fail_fast) {
+        return 1;
+    }
+
     printf("SELFTEST: %d/%d PASS\n", passed, total);
     return (passed == total) ? 0 : 1;
 }
 
-static int cmd_hunt(int argc, char **argv) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: phy hunt "
-                        "<entangled|yangbox|joint|q4|yb8|dual4|ame8|fracton|biquandle8|tetra4|"
-                        "ame4-nogo|simplex4|chiral6|qscar|fracton-comp> "
-                        "[--seed S] [--trials N] [--out-lean P] [--out-fir P] [--out-json P]\n");
-        return 1;
-    }
-    uint32_t mode = PHY_HUNT_ENTANGLED;
-    uint64_t trials = UINT64_C(4000);
-    if (strcmp(argv[2], "entangled") == 0) {
-        mode = PHY_HUNT_ENTANGLED;
-        trials = UINT64_C(4000);
-    } else if (strcmp(argv[2], "yangbox") == 0) {
-        mode = PHY_HUNT_YANGBOX;
-        trials = UINT64_C(8000);
-    } else if (strcmp(argv[2], "joint") == 0) {
-        mode = PHY_HUNT_JOINT;
-        trials = UINT64_C(8000);
-    } else if (strcmp(argv[2], "q4") == 0) {
-        mode = PHY_HUNT_Q4_HIERARCHY;
-        trials = UINT64_C(12000);
-    } else if (strcmp(argv[2], "yb8") == 0) {
-        mode = PHY_HUNT_YB8;
-        trials = UINT64_C(4000);
-    } else if (strcmp(argv[2], "dual4") == 0) {
-        mode = PHY_HUNT_DUAL4;
-        trials = UINT64_C(2500);
-    } else if (strcmp(argv[2], "ame8") == 0) {
-        mode = PHY_HUNT_AME8;
-        trials = UINT64_C(400);
-    } else if (strcmp(argv[2], "fracton") == 0) {
-        mode = PHY_HUNT_FRACTON;
-        trials = UINT64_C(250);
-    } else if (strcmp(argv[2], "biquandle8") == 0) {
-        mode = PHY_HUNT_BIQUANDLE8;
-        trials = UINT64_C(400);
-    } else if (strcmp(argv[2], "tetra4") == 0) {
-        mode = PHY_HUNT_TETRA4;
-        trials = UINT64_C(64);
-    } else if (strcmp(argv[2], "ame4-nogo") == 0) {
-        mode = PHY_HUNT_AME4_NOGO;
-        trials = UINT64_C(1);
-    } else if (strcmp(argv[2], "simplex4") == 0) {
-        mode = PHY_HUNT_SIMPLEX4;
-        trials = UINT64_C(16);
-    } else if (strcmp(argv[2], "chiral6") == 0) {
-        mode = PHY_HUNT_CHIRAL6;
-        trials = UINT64_C(1);
-    } else if (strcmp(argv[2], "qscar") == 0) {
-        mode = PHY_HUNT_QSCAR;
-        trials = UINT64_C(1);
-    } else if (strcmp(argv[2], "fracton-comp") == 0) {
-        mode = PHY_HUNT_FRACTON_COMP;
-        trials = UINT64_C(250);
-    } else {
-        fprintf(stderr, "Unknown hunt mode: %s\n", argv[2]);
-        return 1;
-    }
-
-    uint64_t seed = UINT64_C(2026);
-    const char *out_lean = NULL;
-    const char *out_fir = NULL;
-    const char *out_json = NULL;
-
-    for (int i = 3; i < argc; ++i) {
-        if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
-            seed = strtoull(argv[++i], NULL, 10);
-        } else if (strcmp(argv[i], "--trials") == 0 && i + 1 < argc) {
-            trials = strtoull(argv[++i], NULL, 10);
-        } else if (strcmp(argv[i], "--out-lean") == 0 && i + 1 < argc) {
-            out_lean = argv[++i];
-        } else if (strcmp(argv[i], "--out-fir") == 0 && i + 1 < argc) {
-            out_fir = argv[++i];
-        } else if (strcmp(argv[i], "--out-json") == 0 && i + 1 < argc) {
-            out_json = argv[++i];
-        }
-    }
+static int cmd_hunt_exec(uint32_t mode, const char *mode_name, uint64_t seed, uint64_t trials,
+                         const char *out_lean, const char *out_fir, const char *out_json) {
 
     if (mode == PHY_HUNT_Q4_HIERARCHY) {
         phy_rule_analysis_t best;
@@ -1237,7 +1235,7 @@ static int cmd_hunt(int argc, char **argv) {
     phy_rule_analysis_t best;
     uint32_t found = phy_hunt(&g_arena, mode, seed, trials, &best);
     if (found == 0U) {
-        fprintf(stderr, "hunt mode=%s found 0 matching universes\n", argv[2]);
+        fprintf(stderr, "hunt mode=%s found 0 matching universes\n", mode_name);
         return 2;
     }
 
@@ -1271,11 +1269,106 @@ static int cmd_hunt(int argc, char **argv) {
 
     printf("HUNT %s: found=%u deg=%u yb_viol=%u rank_tot=%u rank_ent=%u j_nz=%u and=%u "
            "span=%u vel_q16=%d merkle=0x%016llx\n",
-           argv[2], (unsigned)found, (unsigned)best.anf_deg, (unsigned)best.yb_violations,
+           mode_name, (unsigned)found, (unsigned)best.anf_deg, (unsigned)best.yb_violations,
            (unsigned)best.rank_tot, (unsigned)best.rank_ent, (unsigned)best.j_nonzero,
            (unsigned)g_fir_ws.and_count, (unsigned)sim.max_span, sim.vel_num_q16,
            (unsigned long long)best.merkle);
     return 0;
+}
+
+static int cmd_hunt(int argc, char **argv) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: phy hunt "
+                        "<entangled|yangbox|joint|q4|yb8|dual4|ame8|fracton|biquandle8|tetra4|"
+                        "ame4-nogo|simplex4|chiral6|qscar|fracton-comp> "
+                        "[--seed S] [--trials N] [--out-lean P] [--out-fir P] [--out-json P] "
+                        "[--out-arena P]\n");
+        return 1;
+    }
+    uint32_t mode = PHY_HUNT_ENTANGLED;
+    uint64_t trials = UINT64_C(4000);
+    if (strcmp(argv[2], "entangled") == 0) {
+        mode = PHY_HUNT_ENTANGLED;
+        trials = UINT64_C(4000);
+    } else if (strcmp(argv[2], "yangbox") == 0) {
+        mode = PHY_HUNT_YANGBOX;
+        trials = UINT64_C(8000);
+    } else if (strcmp(argv[2], "joint") == 0) {
+        mode = PHY_HUNT_JOINT;
+        trials = UINT64_C(8000);
+    } else if (strcmp(argv[2], "q4") == 0) {
+        mode = PHY_HUNT_Q4_HIERARCHY;
+        trials = UINT64_C(12000);
+    } else if (strcmp(argv[2], "yb8") == 0) {
+        mode = PHY_HUNT_YB8;
+        trials = UINT64_C(4000);
+    } else if (strcmp(argv[2], "dual4") == 0) {
+        mode = PHY_HUNT_DUAL4;
+        trials = UINT64_C(2500);
+    } else if (strcmp(argv[2], "ame8") == 0) {
+        mode = PHY_HUNT_AME8;
+        trials = UINT64_C(400);
+    } else if (strcmp(argv[2], "fracton") == 0) {
+        mode = PHY_HUNT_FRACTON;
+        trials = UINT64_C(250);
+    } else if (strcmp(argv[2], "biquandle8") == 0) {
+        mode = PHY_HUNT_BIQUANDLE8;
+        trials = UINT64_C(400);
+    } else if (strcmp(argv[2], "tetra4") == 0) {
+        mode = PHY_HUNT_TETRA4;
+        trials = UINT64_C(64);
+    } else if (strcmp(argv[2], "ame4-nogo") == 0) {
+        mode = PHY_HUNT_AME4_NOGO;
+        trials = UINT64_C(1);
+    } else if (strcmp(argv[2], "simplex4") == 0) {
+        mode = PHY_HUNT_SIMPLEX4;
+        trials = UINT64_C(16);
+    } else if (strcmp(argv[2], "chiral6") == 0) {
+        mode = PHY_HUNT_CHIRAL6;
+        trials = UINT64_C(1);
+    } else if (strcmp(argv[2], "qscar") == 0) {
+        mode = PHY_HUNT_QSCAR;
+        trials = UINT64_C(1);
+    } else if (strcmp(argv[2], "fracton-comp") == 0) {
+        mode = PHY_HUNT_FRACTON_COMP;
+        trials = UINT64_C(250);
+    } else {
+        fprintf(stderr, "Unknown hunt mode: %s\n", argv[2]);
+        return 1;
+    }
+
+    uint64_t seed = UINT64_C(2026);
+    const char *out_lean = NULL;
+    const char *out_fir = NULL;
+    const char *out_json = NULL;
+    const char *out_arena = NULL;
+
+    for (int i = 3; i < argc; ++i) {
+        if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+            seed = strtoull(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--trials") == 0 && i + 1 < argc) {
+            trials = strtoull(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--out-lean") == 0 && i + 1 < argc) {
+            out_lean = argv[++i];
+        } else if (strcmp(argv[i], "--out-fir") == 0 && i + 1 < argc) {
+            out_fir = argv[++i];
+        } else if (strcmp(argv[i], "--out-json") == 0 && i + 1 < argc) {
+            out_json = argv[++i];
+        } else if (strcmp(argv[i], "--out-arena") == 0 && i + 1 < argc) {
+            out_arena = argv[++i];
+        }
+    }
+
+    int rc = cmd_hunt_exec(mode, argv[2], seed, trials, out_lean, out_fir, out_json);
+    if (rc == 0 && out_arena != NULL) {
+        size_t flwa_len = 0U;
+        if (!phy_arena_save_flwa(&g_arena, out_arena, g_arena_wire, sizeof(g_arena_wire),
+                                 &flwa_len)) {
+            fprintf(stderr, "FLWA arena emission failed for %s\n", out_arena);
+            return 6;
+        }
+    }
+    return rc;
 }
 
 static int cmd_inspect(int argc, char **argv) {
@@ -1338,15 +1431,10 @@ static int cmd_eval_fir_bits(int argc, char **argv, uint32_t bits) {
         fprintf(stderr, "Usage: phy %s <path.fir>\n", (bits == 6U) ? "eval-fir6" : "eval-fir");
         return 1;
     }
-    FILE *fp = fopen(argv[2], "rb");
-    if (fp == NULL) {
-        fprintf(stderr, "Cannot open %s\n", argv[2]);
-        return 1;
-    }
-    size_t len = fread(g_eval_buf, 1U, sizeof(g_eval_buf), fp);
-    fclose(fp);
-    if (len == 0U ||
-        flow_ir_load_bytes_fiber(&g_eval_prog, g_eval_buf, len) != FLOW_IR_FIBER_COMMITTED) {
+    size_t len = 0U;
+    bool was_packed = false;
+    if (!phy_fir_load_auto_file(argv[2], &g_eval_prog, g_eval_buf, sizeof(g_eval_buf), &len,
+                                &was_packed)) {
         fprintf(stderr, "Invalid FIR file: %s\n", argv[2]);
         return 2;
     }
@@ -1369,12 +1457,76 @@ static int cmd_eval_fir_bits(int argc, char **argv, uint32_t bits) {
     return 0;
 }
 
+static int cmd_arena_pack(int argc, char **argv) {
+    if (argc < 4) {
+        fprintf(stderr, "Usage: phy arena-pack <in.bin|in.flwa> <out.flwa>\n");
+        return 1;
+    }
+    size_t in_len = 0U;
+    bool was_packed = false;
+    if (!phy_arena_load_auto_file(argv[2], &g_arena_rt, g_arena_wire, sizeof(g_arena_wire), &in_len,
+                                  &was_packed)) {
+        fprintf(stderr, "Invalid arena file: %s\n", argv[2]);
+        return 2;
+    }
+    size_t out_len = 0U;
+    if (!phy_arena_save_flwa(&g_arena_rt, argv[3], g_arena_wire, sizeof(g_arena_wire), &out_len)) {
+        fprintf(stderr, "Failed to write FLWA arena: %s\n", argv[3]);
+        return 3;
+    }
+    printf("ARENA_PACK: %s (%zu B, %s) -> %s (%zu B, FLWA)\n", argv[2], in_len,
+           was_packed ? "FLWA" : "raw", argv[3], out_len);
+    return 0;
+}
+
+static int cmd_arena_unpack(int argc, char **argv) {
+    if (argc < 4) {
+        fprintf(stderr, "Usage: phy arena-unpack <in.flwa|in.bin> <out.bin>\n");
+        return 1;
+    }
+    size_t in_len = 0U;
+    bool was_packed = false;
+    if (!phy_arena_load_auto_file(argv[2], &g_arena_rt, g_arena_wire, sizeof(g_arena_wire), &in_len,
+                                  &was_packed)) {
+        fprintf(stderr, "Invalid arena file: %s\n", argv[2]);
+        return 2;
+    }
+    if (!flow_ir_write_bytes_file(argv[3], (const uint8_t *)&g_arena_rt, PHY_ARENA_BYTES)) {
+        fprintf(stderr, "Failed to write raw arena: %s\n", argv[3]);
+        return 3;
+    }
+    printf("ARENA_UNPACK: %s (%zu B, %s) -> %s (%zu B, raw)\n", argv[2], in_len,
+           was_packed ? "FLWA" : "raw", argv[3], (size_t)PHY_ARENA_BYTES);
+    return 0;
+}
+
+static int cmd_fir_transcode(int argc, char **argv, bool pack) {
+    if (argc < 4) {
+        fprintf(stderr, "Usage: phy %s <in.fir> <out.fir>\n", pack ? "fir-pack" : "fir-unpack");
+        return 1;
+    }
+    size_t in_len = 0U;
+    size_t out_len = 0U;
+    bool ok =
+        pack ? phy_fir_pack_file(argv[2], argv[3], &g_eval_prog, g_eval_buf, sizeof(g_eval_buf),
+                                 g_trans_out_buf, sizeof(g_trans_out_buf), &in_len, &out_len)
+             : phy_fir_unpack_file(argv[2], argv[3], &g_eval_prog, g_eval_buf, sizeof(g_eval_buf),
+                                   g_trans_out_buf, sizeof(g_trans_out_buf), &in_len, &out_len);
+    if (!ok) {
+        fprintf(stderr, "FIR %s failed: %s -> %s\n", pack ? "pack" : "unpack", argv[2], argv[3]);
+        return 2;
+    }
+    printf("%s: %s (%zu B) -> %s (%zu B, %s)\n", pack ? "FIR_PACK" : "FIR_UNPACK", argv[2], in_len,
+           argv[3], out_len, pack ? "FIR2" : "FIR1");
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "PHY v4.0.0 — Exact Noether, Dual-Unitary, 4-Simplex, Knot Cohomology, "
                         "Z[i] Quantum Scar & Fracton Engine\n");
-        fprintf(stderr, "Usage: phy <selftest|hunt|inspect|eval-fir|eval-fir6|classify-tetra2|"
-                        "classify-ame4> ...\n");
+        fprintf(stderr, "Usage: phy <selftest|hunt|inspect|eval-fir|eval-fir6|fir-pack|"
+                        "fir-unpack|arena-pack|arena-unpack|classify-tetra2|classify-ame4> ...\n");
         return 1;
     }
     if (strcmp(argv[1], "selftest") == 0) {
@@ -1392,6 +1544,18 @@ int main(int argc, char **argv) {
     }
     if (strcmp(argv[1], "eval-fir6") == 0) {
         return cmd_eval_fir_bits(argc, argv, 6U);
+    }
+    if (strcmp(argv[1], "fir-pack") == 0) {
+        return cmd_fir_transcode(argc, argv, true);
+    }
+    if (strcmp(argv[1], "fir-unpack") == 0) {
+        return cmd_fir_transcode(argc, argv, false);
+    }
+    if (strcmp(argv[1], "arena-pack") == 0) {
+        return cmd_arena_pack(argc, argv);
+    }
+    if (strcmp(argv[1], "arena-unpack") == 0) {
+        return cmd_arena_unpack(argc, argv);
     }
     if (strcmp(argv[1], "classify-tetra2") == 0) {
         uint16_t tot = 0U;

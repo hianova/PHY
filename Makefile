@@ -121,7 +121,7 @@ endif
 	@echo "[Gate 2] PASS (0 undef symbols, Pure-GPR clean, C++20 clean, clang-tidy 0 warnings)"
 
 gate3-selftest: $(BUILD)/phy
-	@echo "[Gate 3] Running built-in 25-suite Ring-0 + SDK selftest..."
+	@echo "[Gate 3] Running built-in 26-suite Ring-0 + SDK selftest..."
 	./$(BUILD)/phy selftest
 	@echo "[Gate 3] PASS"
 
