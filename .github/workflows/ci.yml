@@ -12,7 +12,7 @@ on:
 
 jobs:
   verify-phy:
-    name: PHY v4.0.0 Noether Lean 4, Pure-GPR Ring-0 & 8-Gate Suite (${{ matrix.os }})
+    name: PHY v4.1.0 Noether Lean 4, Pure-GPR Ring-0 & 8-Gate Suite (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -57,7 +57,7 @@ jobs:
           fi
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Build FLOW & Run PHY v4.0.0 8-Gate Verification Suite
+      - name: Build FLOW & Run PHY v4.1.0 8-Gate Verification Suite
         run: |
           export PATH="$HOME/.elan/bin:$PATH"
           if [ "$(uname -s)" = "Darwin" ]; then

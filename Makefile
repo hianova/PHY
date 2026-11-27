@@ -53,6 +53,10 @@ $(BUILD)/lean/Phy/Noether.olean: Phy/Noether.lean
 	@mkdir -p $(BUILD)/lean/Phy
 	LEAN_PATH=$(BUILD)/lean:$(FLOW_DIR)/build/lean $(LEAN_BIN) -DwarningAsError=true --root=. -o $@ $<
 
+$(BUILD)/lean/Phy/HigherDimFrontier.olean: Phy/HigherDimFrontier.lean
+	@mkdir -p $(BUILD)/lean/Phy
+	$(LEAN_BIN) -DwarningAsError=true --root=. -o $@ $<
+
 $(BUILD)/lean/Phy.olean: Phy.lean
 	@mkdir -p $(BUILD)/lean
 	LEAN_PATH=$(BUILD)/lean:$(FLOW_DIR)/build/lean \
@@ -87,9 +91,10 @@ gate0-lean-noether: $(BUILD)/lean/Phy/Noether.olean
 	@if grep -q 'sorryAx' $(BUILD)/noether_axioms.txt; then echo "ERROR: sorryAx detected"; exit 1; fi
 	@echo "[Gate 0] PASS (Phy.Noether 0 sorryAx)"
 
-gate1-lean-schema: $(BUILD)/phy_schema_abi.h $(BUILD)/phy_schema.smt2 $(BUILD)/PhySchemaCert.lean $(BUILD)/lean/Phy.olean
-	@echo "[Gate 1] Auditing Phy schema (.fspec -> C17/Z3/Lean), hash parity & Phy.lean..."
+gate1-lean-schema: $(BUILD)/phy_schema_abi.h $(BUILD)/phy_schema.smt2 $(BUILD)/PhySchemaCert.lean $(BUILD)/lean/Phy.olean $(BUILD)/lean/Phy/HigherDimFrontier.olean
+	@echo "[Gate 1] Auditing Phy schema (.fspec -> C17/Z3/Lean), hash parity, Phy.lean & Phy.HigherDimFrontier..."
 	@if grep -qE '^\s*(theorem|lemma|axiom)\s' Phy.lean; then echo "ERROR: theorems not allowed in Phy.lean"; exit 1; fi
+	@if grep -qiE '\b(sorry|native_decide)\b' Phy/HigherDimFrontier.lean || grep -qE '^\s*axiom\s' Phy/HigherDimFrontier.lean; then echo "ERROR: sorry/axiom/native_decide found in Phy/HigherDimFrontier.lean"; exit 1; fi
 	@if grep -q 'memcpy' $(BUILD)/phy_schema_abi.h; then echo "ERROR: memcpy found in generated ABI header"; exit 1; fi
 	@if [ -n "$(Z3)" ]; then \
 		res=$$($(Z3) $(BUILD)/phy_schema.smt2); \
@@ -101,7 +106,11 @@ gate1-lean-schema: $(BUILD)/phy_schema_abi.h $(BUILD)/phy_schema.smt2 $(BUILD)/P
 	if [ "$$h_c" != "$$h_l" ]; then echo "ERROR: PHY_SCHEMA_HASH mismatch: .fspec=$$h_c Phy.lean=$$h_l"; exit 1; fi
 	LEAN_PATH=$(BUILD)/lean:$(FLOW_DIR)/build/lean $(LEAN_BIN) -DwarningAsError=true $(BUILD)/PhySchemaCert.lean
 	LEAN_PATH=$(BUILD)/lean:$(FLOW_DIR)/build/lean $(LEANCHECKER) Phy
-	@echo "[Gate 1] PASS (512-slot ABI 0 memcpy, Z3 unsat, .fspec<->Lean hash $$($(FLOW_CLI) schema hash phy_schema.fspec) parity, PhySchemaCert + leanchecker PASS)"
+	LEAN_PATH=$(BUILD)/lean $(LEANCHECKER) Phy.HigherDimFrontier
+	@printf 'import Phy.HigherDimFrontier\n#print axioms Phy.HigherDimFrontier.tetraR3_order3\n#print axioms Phy.HigherDimFrontier.tetraR3_noninvolutive\n#print axioms Phy.HigherDimFrontier.tetraR3_not_involutive\n#print axioms Phy.HigherDimFrontier.tetraR3_bijective\n#print axioms Phy.HigherDimFrontier.tetraR3_secondDiffXZ\n#print axioms Phy.HigherDimFrontier.tetraR3_nonlinear\n#print axioms Phy.HigherDimFrontier.tetraR3_3channel_coupled\n#print axioms Phy.HigherDimFrontier.tetraR3_satisfies_tetra\n#print axioms Phy.HigherDimFrontier.isLatin_of_inverses\n#print axioms Phy.HigherDimFrontier.isOrthogonal_of_inverse\n#print axioms Phy.HigherDimFrontier.isOLS_implies_2unitary\n#print axioms Phy.HigherDimFrontier.ame45_deg6_relabeling\n#print axioms Phy.HigherDimFrontier.ame45_deg6_is_ols5\n#print axioms Phy.HigherDimFrontier.ame45_deg6_2unitary\n#print axioms Phy.HigherDimFrontier.ame45_deg6_not_affine\n#print axioms Phy.HigherDimFrontier.ame45_deg6_poly_exact\n#print axioms Phy.HigherDimFrontier.ame45_deg6_forced_deg6\n#print axioms Phy.HigherDimFrontier.ame47_witness_is_ols7\n#print axioms Phy.HigherDimFrontier.isotopic_to_Z7_implies_quadrangle\n#print axioms Phy.HigherDimFrontier.ame47_A7_not_isotopic_to_Z7\n#print axioms Phy.HigherDimFrontier.eisen_omega_eq\n#print axioms Phy.HigherDimFrontier.eisen_conj_mul_self\n#print axioms Phy.HigherDimFrontier.eisen_norm_mul\n#print axioms Phy.HigherDimFrontier.ame46_classical_defect_floor_2\n#print axioms Phy.HigherDimFrontier.ame46_zw40_nnz_count\n#print axioms Phy.HigherDimFrontier.ame46_zw40_unitary\n#print axioms Phy.HigherDimFrontier.ame46_zw40_defect_escape\n#print axioms Phy.HigherDimFrontier.ame46_zw44_nnz_count\n#print axioms Phy.HigherDimFrontier.ame46_zw44_unitary\n#print axioms Phy.HigherDimFrontier.ame46_zw44_defect_escape\n' | \
+		LEAN_PATH=$(BUILD)/lean $(LEAN_BIN) --stdin > $(BUILD)/frontier_axioms.txt
+	@if grep -q 'sorryAx' $(BUILD)/frontier_axioms.txt; then echo "ERROR: sorryAx detected in Phy.HigherDimFrontier"; exit 1; fi
+	@echo "[Gate 1] PASS (512-slot ABI 0 memcpy, Z3 unsat, .fspec<->Lean hash $$($(FLOW_CLI) schema hash phy_schema.fspec) parity, PhySchemaCert + leanchecker Phy + Phy.HigherDimFrontier 0 sorryAx PASS)"
 
 gate2-ring0-audit: $(BUILD)/phy_ring0.c.o
 	@echo "[Gate 2] Auditing Ring-0 freestanding Pure-GPR object..."
@@ -157,4 +166,4 @@ clean:
 	rm -rf $(BUILD)
 
 verify-all: gate0-lean-noether gate1-lean-schema gate2-ring0-audit gate3-selftest gate4-cli-audit gate5-oracle gate6-sabotage gate7-format
-	@echo "=== PHY v4.0.0: ALL 8 VERIFICATION GATES PASSED ==="
+	@echo "=== PHY v4.1.0: ALL 8 VERIFICATION GATES PASSED ==="
