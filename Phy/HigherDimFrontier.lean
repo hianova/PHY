@@ -1,7 +1,7 @@
 namespace Phy.HigherDimFrontier
 
 /-!
-  PHY v4.1.0 — Higher-Dimensional Frontier Formalizations (Pure-`Init` Lean 4.36.0).
+  PHY v4.2.0 — Higher-Dimensional Frontier Formalizations (Pure-`Init` Lean 4.36.0).
   Zero imports outside Lean 4 `Init`; pure kernel proofs only.
 
   Covers three referee-certified discovery frontiers:
@@ -9,8 +9,9 @@ namespace Phy.HigherDimFrontier
      tetrahedron family `R_{c,a}` across all 729 6-channel inputs.
   2. `AME(4,5)` degree-6 `F_5` algebraic-rigidity counterexample via single-channel
      relabeling and `d* = 7` non-group orthogonal Latin square onset `(A7, B7)`.
-  3. `AME(4,6)` exact Eisenstein integer `Z[omega]` quantum escape below the
-     classical `2`-defect floor (`D_total = 3/2 < 2` at 40 nnz and `27/26 < 2` at 44 nnz).
+  3. `AME(4,6)` exact Eisenstein `Z[omega]` & quadratic `Z[sqrt(5)]` quantum escapes
+     below the classical `2`-defect floor (`D_total = 3/2` at 40 nnz, `27/26` at 44 nnz,
+     and `< 27/26` at 48 nnz: `0.805396...` in `(1/854) Z[omega]` and `313078/321489` in `(1/63) Z[sqrt(5)]`).
 -/
 
 def Bijective {α β : Type} (f : α → β) : Prop :=
@@ -1280,5 +1281,239 @@ theorem ame46_zw44_defect_escape :
     decide
   · rw [defectSumSqrt13_eq_sparse 52 (reshuffleR U44_2s13) suppUR_r1 suppUR_r2 ur44_supp]
     decide
+
+/-! ## Section 4: 48-nnz `AME(4,6)` Escapes Beyond `27/26` in `(1/854) Z[ω]` & `(1/63) Z[√5]` -/
+
+/-- Exact quadratic integer ring `Z[√5]` represented as `u + v * √5`. -/
+structure QuadSqrt5 where
+  u : Int
+  v : Int
+  deriving DecidableEq, Repr
+
+def sZero : QuadSqrt5 := ⟨0, 0⟩
+def sOne : QuadSqrt5 := ⟨1, 0⟩
+def sAdd (x y : QuadSqrt5) : QuadSqrt5 := ⟨x.u + y.u, x.v + y.v⟩
+def sSub (x y : QuadSqrt5) : QuadSqrt5 := ⟨x.u - y.u, x.v - y.v⟩
+def sMul (x y : QuadSqrt5) : QuadSqrt5 := ⟨x.u * y.u + 5 * x.v * y.v, x.u * y.v + x.v * y.u⟩
+def sId (x : QuadSqrt5) : QuadSqrt5 := x
+
+private theorem sAdd_zeroL (x : QuadSqrt5) : sAdd sZero x = x := by rcases x with ⟨a, b⟩; simp [sAdd, sZero]
+private theorem sAdd_zeroR (x : QuadSqrt5) : sAdd x sZero = x := by rcases x with ⟨a, b⟩; simp [sAdd, sZero]
+private theorem sAdd_assoc (x y z : QuadSqrt5) : sAdd (sAdd x y) z = sAdd x (sAdd y z) := by
+  rcases x with ⟨a, b⟩; rcases y with ⟨c, d⟩; rcases z with ⟨e, f⟩; simp [sAdd, Int.add_assoc]
+private theorem sAdd_comm (x y : QuadSqrt5) : sAdd x y = sAdd y x := by
+  rcases x with ⟨a, b⟩; rcases y with ⟨c, d⟩; simp [sAdd, Int.add_comm]
+private theorem sId_zero : sId sZero = sZero := rfl
+private theorem sMul_zeroL (x : QuadSqrt5) : sMul sZero x = sZero := by rcases x with ⟨a, b⟩; simp [sMul, sZero]
+private theorem sMul_zeroR (x : QuadSqrt5) : sMul x sZero = sZero := by rcases x with ⟨a, b⟩; simp [sMul, sZero]
+
+/-- Scaled 48-nonzero `(1/854) Z[ω]` 6-block gate `U_zw854` (`D_total ≈ 0.805396081933 < 27/26`). -/
+def U_zw854 (r c : Fin 36) : EisenInt :=
+  match r.val, c.val with
+  | 4, 28 => ⟨392, -392⟩
+  | 4, 35 => ⟨-518, 0⟩
+  | 5, 28 => ⟨518, 0⟩
+  | 5, 35 => ⟨784, 392⟩
+  | 10, 30 => ⟨455, -455⟩
+  | 10, 25 => ⟨-329, 0⟩
+  | 11, 30 => ⟨329, 0⟩
+  | 11, 25 => ⟨910, 455⟩
+  | 16, 15 => ⟨488, -488⟩
+  | 16, 20 => ⟨122, 0⟩
+  | 17, 15 => ⟨-122, 0⟩
+  | 17, 20 => ⟨976, 488⟩
+  | 22, 19 => ⟨488, -488⟩
+  | 22, 12 => ⟨-122, 0⟩
+  | 23, 19 => ⟨122, 0⟩
+  | 23, 12 => ⟨976, 488⟩
+  | 28, 4 => ⟨392, -392⟩
+  | 28, 11 => ⟨518, 0⟩
+  | 29, 4 => ⟨-518, 0⟩
+  | 29, 11 => ⟨784, 392⟩
+  | 34, 8 => ⟨455, -455⟩
+  | 34, 3 => ⟨329, 0⟩
+  | 35, 8 => ⟨-329, 0⟩
+  | 35, 3 => ⟨910, 455⟩
+  | _, _ =>
+    if (r.val == 4) || (r.val == 5) || (r.val == 10) || (r.val == 11) || (r.val == 16) || (r.val == 17) ||
+       (r.val == 22) || (r.val == 23) || (r.val == 28) || (r.val == 29) || (r.val == 34) || (r.val == 35) then eZero
+    else if perm0_6 r == c then ⟨854, 0⟩ else eZero
+
+/-- Scaled 48-nonzero `(1/63) Z[√5]` 6-block gate `U_zs5_63` (`D_total = 313078/321489 < 27/26`). -/
+def U_zs5_63 (r c : Fin 36) : QuadSqrt5 :=
+  match r.val, c.val with
+  | 4, 28 => ⟨0, 21⟩
+  | 4, 35 => ⟨-42, 0⟩
+  | 5, 28 => ⟨42, 0⟩
+  | 5, 35 => ⟨0, 21⟩
+  | 10, 30 => ⟨0, 27⟩
+  | 10, 25 => ⟨-18, 0⟩
+  | 11, 30 => ⟨18, 0⟩
+  | 11, 25 => ⟨0, 27⟩
+  | 16, 15 => ⟨0, 28⟩
+  | 16, 20 => ⟨7, 0⟩
+  | 17, 15 => ⟨-7, 0⟩
+  | 17, 20 => ⟨0, 28⟩
+  | 22, 19 => ⟨0, 28⟩
+  | 22, 12 => ⟨-7, 0⟩
+  | 23, 19 => ⟨7, 0⟩
+  | 23, 12 => ⟨0, 28⟩
+  | 28, 4 => ⟨0, 21⟩
+  | 28, 11 => ⟨42, 0⟩
+  | 29, 4 => ⟨-42, 0⟩
+  | 29, 11 => ⟨0, 21⟩
+  | 34, 8 => ⟨0, 27⟩
+  | 34, 3 => ⟨18, 0⟩
+  | 35, 8 => ⟨-18, 0⟩
+  | 35, 3 => ⟨0, 27⟩
+  | _, _ =>
+    if (r.val == 4) || (r.val == 5) || (r.val == 10) || (r.val == 11) || (r.val == 16) || (r.val == 17) ||
+       (r.val == 22) || (r.val == 23) || (r.val == 28) || (r.val == 29) || (r.val == 34) || (r.val == 35) then sZero
+    else if perm0_6 r == c then ⟨63, 0⟩ else sZero
+
+private def suppU48_r1 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 14  | 2 => 7   | 3 => 34  | 4 => 28  | 5 => 21
+  | 6 => 15  | 7 => 1   | 8 => 34  | 9 => 6   | 10 => 20 | 11 => 28
+  | 12 => 22 | 13 => 24 | 14 => 2  | 15 => 16 | 16 => 9  | 17 => 31
+  | 18 => 25 | 19 => 22 | 20 => 16 | 21 => 3  | 22 => 30 | 23 => 8
+  | 24 => 32 | 25 => 10 | 26 => 27 | 27 => 19 | 28 => 4  | 29 => 12
+  | 30 => 10 | 31 => 33 | 32 => 18 | 33 => 26 | 34 => 13 | _ => 4
+
+private def suppU48_r2 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 14  | 2 => 7   | 3 => 35  | 4 => 29  | 5 => 21
+  | 6 => 15  | 7 => 1   | 8 => 35  | 9 => 6   | 10 => 20 | 11 => 29
+  | 12 => 23 | 13 => 24 | 14 => 2  | 15 => 17 | 16 => 9  | 17 => 31
+  | 18 => 25 | 19 => 23 | 20 => 17 | 21 => 3  | 22 => 30 | 23 => 8
+  | 24 => 32 | 25 => 11 | 26 => 27 | 27 => 19 | 28 => 5  | 29 => 12
+  | 30 => 11 | 31 => 33 | 32 => 18 | 33 => 26 | 34 => 13 | _ => 5
+
+private def suppUG48_r1 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 8   | 2 => 13  | 3 => 23  | 4 => 28  | 5 => 28
+  | 6 => 9   | 7 => 1   | 8 => 22  | 9 => 12  | 10 => 29 | 11 => 29
+  | 12 => 25 | 13 => 35 | 14 => 2  | 15 => 10 | 16 => 15 | 17 => 15
+  | 18 => 34 | 19 => 24 | 20 => 11 | 21 => 3  | 22 => 14 | 23 => 14
+  | 24 => 17 | 25 => 21 | 26 => 30 | 27 => 26 | 28 => 4  | 29 => 4
+  | 30 => 20 | 31 => 16 | 32 => 27 | 33 => 31 | 34 => 5  | _ => 5
+
+private def suppUG48_r2 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 8   | 2 => 13  | 3 => 23  | 4 => 33  | 5 => 33
+  | 6 => 9   | 7 => 1   | 8 => 22  | 9 => 12  | 10 => 32 | 11 => 32
+  | 12 => 25 | 13 => 35 | 14 => 2  | 15 => 10 | 16 => 18 | 17 => 18
+  | 18 => 34 | 19 => 24 | 20 => 11 | 21 => 3  | 22 => 19 | 23 => 19
+  | 24 => 17 | 25 => 21 | 26 => 30 | 27 => 26 | 28 => 7  | 29 => 7
+  | 30 => 20 | 31 => 16 | 32 => 27 | 33 => 31 | 34 => 6  | _ => 6
+
+private def suppUR48_r1 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 22  | 2 => 29  | 3 => 8   | 4 => 15  | 5 => 15
+  | 6 => 16  | 7 => 6   | 8 => 2   | 9 => 35  | 10 => 21 | 11 => 21
+  | 12 => 33 | 13 => 1  | 14 => 12 | 15 => 28 | 16 => 11 | 17 => 11
+  | 18 => 7  | 19 => 27 | 20 => 34 | 21 => 18 | 22 => 5  | 23 => 5
+  | 24 => 23 | 25 => 32 | 26 => 9  | 27 => 13 | 28 => 4  | 29 => 4
+  | 30 => 26 | 31 => 17 | 32 => 19 | 33 => 3  | 34 => 10 | _ => 10
+
+private def suppUR48_r2 (j : Fin 36) : Fin 36 :=
+  match j.val with
+  | 0 => 0   | 1 => 22  | 2 => 29  | 3 => 8   | 4 => 31  | 5 => 31
+  | 6 => 16  | 7 => 6   | 8 => 2   | 9 => 35  | 10 => 25 | 11 => 25
+  | 12 => 33 | 13 => 1  | 14 => 12 | 15 => 28 | 16 => 20 | 17 => 20
+  | 18 => 7  | 19 => 27 | 20 => 34 | 21 => 18 | 22 => 14 | 23 => 14
+  | 24 => 23 | 25 => 32 | 26 => 9  | 27 => 13 | 28 => 24 | 29 => 24
+  | 30 => 26 | 31 => 17 | 32 => 19 | 33 => 3  | 34 => 30 | _ => 30
+
+private theorem u_zw854_supp : ∀ k j : Fin 36, k ≠ suppU48_r1 j → k ≠ suppU48_r2 j → U_zw854 k j = eZero :=
+  supp_of_allFin36 eZero U_zw854 suppU48_r1 suppU48_r2 (by decide)
+
+private theorem ug_zw854_supp : ∀ k j : Fin 36, k ≠ suppUG48_r1 j → k ≠ suppUG48_r2 j → reshuffleGamma U_zw854 k j = eZero :=
+  supp_of_allFin36 eZero (reshuffleGamma U_zw854) suppUG48_r1 suppUG48_r2 (by decide)
+
+private theorem ur_zw854_supp : ∀ k j : Fin 36, k ≠ suppUR48_r1 j → k ≠ suppUR48_r2 j → reshuffleR U_zw854 k j = eZero :=
+  supp_of_allFin36 eZero (reshuffleR U_zw854) suppUR48_r1 suppUR48_r2 (by decide)
+
+private theorem u_zs5_supp : ∀ k j : Fin 36, k ≠ suppU48_r1 j → k ≠ suppU48_r2 j → U_zs5_63 k j = sZero :=
+  supp_of_allFin36 sZero U_zs5_63 suppU48_r1 suppU48_r2 (by decide)
+
+private theorem ug_zs5_supp : ∀ k j : Fin 36, k ≠ suppUG48_r1 j → k ≠ suppUG48_r2 j → reshuffleGamma U_zs5_63 k j = sZero :=
+  supp_of_allFin36 sZero (reshuffleGamma U_zs5_63) suppUG48_r1 suppUG48_r2 (by decide)
+
+private theorem ur_zs5_supp : ∀ k j : Fin 36, k ≠ suppUR48_r1 j → k ≠ suppUR48_r2 j → reshuffleR U_zs5_63 k j = sZero :=
+  supp_of_allFin36 sZero (reshuffleR U_zs5_63) suppUR48_r1 suppUR48_r2 (by decide)
+
+def defectSumS5 (scaleSq : Int) (M : Fin 36 → Fin 36 → QuadSqrt5) : QuadSqrt5 :=
+  sumFin36 sAdd fun i => sumFin36 sAdd fun j =>
+    let d := matDagMat sAdd sMul sId M i j
+    let err := if i == j then sSub d ⟨scaleSq, 0⟩ else d
+    sMul err err
+
+private def defectSumS5Sparse (scaleSq : Int) (M : Fin 36 → Fin 36 → QuadSqrt5)
+    (r1 r2 : Fin 36 → Fin 36) : QuadSqrt5 :=
+  sumFin36 sAdd fun i => sumFin36 sAdd fun j =>
+    let d := sparseDotFast sZero sAdd sMul sId M r1 r2 i j
+    let err := if i == j then sSub d ⟨scaleSq, 0⟩ else d
+    sMul err err
+
+private theorem defectSumS5_eq_sparse (scaleSq : Int) (M : Fin 36 → Fin 36 → QuadSqrt5)
+    (r1 r2 : Fin 36 → Fin 36) (hsupp : ∀ k j : Fin 36, k ≠ r1 j → k ≠ r2 j → M k j = sZero) :
+    defectSumS5 scaleSq M = defectSumS5Sparse scaleSq M r1 r2 := by
+  simp only [defectSumS5, defectSumS5Sparse]
+  have h : ∀ i j : Fin 36,
+      matDagMat sAdd sMul sId M i j =
+        sparseDotFast sZero sAdd sMul sId M r1 r2 i j :=
+    matDagMat_eq_sparseDotFast sZero sAdd sMul sId
+      sAdd_zeroL sAdd_zeroR sAdd_assoc sAdd_comm sId_zero sMul_zeroL sMul_zeroR M r1 r2 hsupp
+  simp only [h]
+
+/-- Exact sparsity (`nnz = 48`) and exact unitarity (`U^† U = 854^2 I`) of `U_zw854`. -/
+theorem ame46_zw854_nnz_and_unitary :
+    countNnz36 eZero U_zw854 = 48 ∧
+    (∀ i j : Fin 36, matDagMat eAdd eMul eConj U_zw854 i j = if i == j then ⟨729316, 0⟩ else eZero) := by
+  refine ⟨by decide, fun i j => ?_⟩
+  rw [matDagMat_eq_sparseDotFast eZero eAdd eMul eConj
+    eAdd_zeroL eAdd_zeroR eAdd_assoc eAdd_comm eConj_zero eMul_zeroL eMul_zeroR U_zw854 suppU48_r1 suppU48_r2 u_zw854_supp]
+  have h : allFin36 (fun i => allFin36 (fun j =>
+      sparseDotFast eZero eAdd eMul eConj U_zw854 suppU48_r1 suppU48_r2 i j ==
+        (if i == j then ⟨729316, 0⟩ else eZero))) = true := by decide
+  exact beq_iff_eq.mp (allFin36_forall (allFin36_forall h i) j)
+
+/-- Exact defect suppression of `U_zw854`: `D_total < 0.8054 < 27/26 < 2` (`scale = 2 * 854^4`). -/
+theorem ame46_zw854_defect_beats_27_26 :
+    let scale := (2 : Int) * (854 * 854) * (854 * 854)
+    let dG := defectNumEisen 729316 (reshuffleGamma U_zw854)
+    let dR := defectNumEisen 729316 (reshuffleR U_zw854)
+    (dG + dR) * 10000 < 8054 * scale ∧
+    (dG + dR) * 26 < 27 * scale ∧
+    dG + dR < 2 * scale := by
+  rw [defectNumEisen_eq_sparse 729316 (reshuffleGamma U_zw854) suppUG48_r1 suppUG48_r2 ug_zw854_supp]
+  rw [defectNumEisen_eq_sparse 729316 (reshuffleR U_zw854) suppUR48_r1 suppUR48_r2 ur_zw854_supp]
+  refine ⟨by decide, by decide, by decide⟩
+
+/-- Exact sparsity (`nnz = 48`) and exact unitarity (`U^† U = 63^2 I`) of `U_zs5_63`. -/
+theorem ame46_zs5_63_nnz_and_unitary :
+    countNnz36 sZero U_zs5_63 = 48 ∧
+    (∀ i j : Fin 36, matDagMat sAdd sMul sId U_zs5_63 i j = if i == j then ⟨3969, 0⟩ else sZero) := by
+  refine ⟨by decide, fun i j => ?_⟩
+  rw [matDagMat_eq_sparseDotFast sZero sAdd sMul sId
+    sAdd_zeroL sAdd_zeroR sAdd_assoc sAdd_comm sId_zero sMul_zeroL sMul_zeroR U_zs5_63 suppU48_r1 suppU48_r2 u_zs5_supp]
+  have h : allFin36 (fun i => allFin36 (fun j =>
+      sparseDotFast sZero sAdd sMul sId U_zs5_63 suppU48_r1 suppU48_r2 i j ==
+        (if i == j then ⟨3969, 0⟩ else sZero))) = true := by decide
+  exact beq_iff_eq.mp (allFin36_forall (allFin36_forall h i) j)
+
+/-- Exact defect suppression of `U_zs5_63`: `D_total = 313078/321489 < 0.974 < 27/26 < 2` (`scale = 2 * 63^4`). -/
+theorem ame46_zs5_63_defect_beats_27_26 :
+    let scale := (2 : Int) * (63 * 63) * (63 * 63)
+    let dG := defectSumS5 3969 (reshuffleGamma U_zs5_63)
+    let dR := defectSumS5 3969 (reshuffleR U_zs5_63)
+    dG.v = 0 ∧ dR.v = 0 ∧
+    (dG.u + dR.u) * 1000 < 974 * scale ∧
+    (dG.u + dR.u) * 26 < 27 * scale ∧
+    dG.u + dR.u < 2 * scale := by
+  rw [defectSumS5_eq_sparse 3969 (reshuffleGamma U_zs5_63) suppUG48_r1 suppUG48_r2 ug_zs5_supp]
+  rw [defectSumS5_eq_sparse 3969 (reshuffleR U_zs5_63) suppUR48_r1 suppUR48_r2 ur_zs5_supp]
+  refine ⟨by decide, by decide, by decide, by decide, by decide⟩
 
 end Phy.HigherDimFrontier
